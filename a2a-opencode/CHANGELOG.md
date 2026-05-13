@@ -1,5 +1,18 @@
 # Changelog
 
+## Unreleased
+
+### Minor Changes
+
+- **A2A Sub-Agents** — new `subAgents` config section lets the parent agent expose remote A2A agents as MCP tools to the OpenCode LLM. The wrapper spawns [`a2a-mcp-skillmap`](https://www.npmjs.com/package/a2a-mcp-skillmap) as a stdio MCP server and registers it under the reserved `a2a-subagents` key. Each remote skill becomes a callable tool the LLM can dispatch like any other MCP tool. See `agents/multi-agent/` for an example.
+- **Pinned skillmap version** — the synthesized MCP entry invokes `npx -y a2a-mcp-skillmap@<pinned>` rather than the unpinned package name, so a future skillmap release cannot silently change semantics.
+- **JSON schema for `config.json`** — `schemas/agent-config.schema.json` is now generated from the TypeScript types via `npm run schema`. Editors that read `$schema` references will autocomplete and validate config files. Two test guardrails ship in CI: one validates every bundled example against the schema, one regenerates the schema from the types and asserts byte-equality with the committed copy so drift is caught at PR time.
+
+### Patch Changes
+
+- Updated dependencies
+  - @a2a-wrapper/core (sub-agents support)
+
 ## 1.4.0
 
 ### Minor Changes

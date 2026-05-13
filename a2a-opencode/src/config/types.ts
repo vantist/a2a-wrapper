@@ -5,6 +5,12 @@
  * A single JSON file (or programmatic object) drives the entire wrapper.
  */
 
+import type {
+  EventsConfig,
+  MemoryConfig,
+  SubAgentsConfig,
+} from "@a2a-wrapper/core";
+
 // ─── Agent Card Config ──────────────────────────────────────────────────────
 
 /** A single skill exposed on the agent card. */
@@ -232,13 +238,26 @@ export interface AgentConfig {
    */
   mcp?: Record<string, McpServerConfig>;
   /** Event transport configuration for sideband observability events. */
-  events?: import("@a2a-wrapper/core").EventsConfig;
+  events?: EventsConfig;
   /**
    * Optional memory configuration for persisting instructions and skills.
    * When present, the materializer writes these to backend-specific paths
    * in the workspace directory during executor initialization.
    */
-  memory?: import("@a2a-wrapper/core").MemoryConfig;
+  memory?: MemoryConfig;
+  /**
+   * Optional sub-agents to expose as MCP tools via the `a2a-mcp-skillmap`
+   * bridge. When present, the parent agent spawns skillmap as a stdio MCP
+   * server and registers it under the reserved `a2a-subagents` key in the
+   * resolved {@link mcp} map. Sub-agents declared here become callable as
+   * ordinary MCP tools by the OpenCode runtime.
+   *
+   * When this field is absent or `agents` is empty, the parent skips every
+   * sub-agent code path with no side effects.
+   *
+   * @see {@link ../../../.kiro/specs/a2a-subagents/design.md}
+   */
+  subAgents?: SubAgentsConfig;
   /**
    * Directory containing the agent's config.json file.
    * Populated automatically by the CLI scaffold when a config file path is provided.

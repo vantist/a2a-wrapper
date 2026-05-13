@@ -15,6 +15,7 @@
  */
 
 import type { MemoryConfig } from "../memory/types.js";
+import type { SubAgentsConfig } from "../sub-agents/types.js";
 
 // ─── Skill Config ───────────────────────────────────────────────────────────
 
@@ -446,6 +447,20 @@ export interface BaseAgentConfig<TBackend = Record<string, unknown>> {
    * in the workspace directory during executor initialization.
    */
   memory?: MemoryConfig;
+
+  /**
+   * Optional sub-agents to expose as MCP tools via the `a2a-mcp-skillmap`
+   * bridge. When present, the parent agent spawns skillmap as a stdio MCP
+   * server and registers it under the reserved `a2a-subagents` key in the
+   * resolved {@link mcp} map. Sub-agents declared here become callable as
+   * ordinary MCP tools by the parent's underlying LLM runtime.
+   *
+   * When this field is absent or `agents` is empty, the parent skips every
+   * sub-agent code path with no side effects.
+   *
+   * @see {@link ../../../../.kiro/specs/a2a-subagents/design.md}
+   */
+  subAgents?: SubAgentsConfig;
 
   /**
    * Directory containing the agent's config.json file.

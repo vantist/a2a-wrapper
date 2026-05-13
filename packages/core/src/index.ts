@@ -116,6 +116,38 @@ export {
   resolveMemoryPath,
 } from "./memory/index.js";
 
+// ─── Sub-Agents ─────────────────────────────────────────────────────────────
+
+export type {
+  SubAgentConfig,
+  SubAgentAuthConfig,
+  SubAgentsOptions,
+  SubAgentsConfig,
+  SynthesizedMcpDescriptor,
+  ProbeResult,
+  BootstrapInput,
+  BootstrapResult,
+  BridgeConfigSource,
+  BridgeConfigAgentEntry,
+  BridgeConfig,
+  ValidationOutcome,
+  SubAgentValidationReason,
+  SubAgentValidationErrorDetails,
+} from "./sub-agents/index.js";
+
+export {
+  SUBAGENTS_MCP_KEY,
+  SKILLMAP_PACKAGE_VERSION,
+  validateSubAgents,
+  SubAgentValidationError,
+  buildBridgeConfig,
+  resolveBridgeConfigPath,
+  writeBridgeConfig,
+  probeSubAgents,
+  buildSynthesizedMcpEntry,
+  bootstrapSubAgents,
+} from "./sub-agents/index.js";
+
 // ─── A2A SDK Type Re-exports ────────────────────────────────────────────────
 //
 // Core-owned aliases for commonly used A2A SDK types. Wrapper projects

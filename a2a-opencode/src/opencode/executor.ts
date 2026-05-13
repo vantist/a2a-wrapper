@@ -15,7 +15,7 @@ import { v4 as uuidv4 } from "uuid";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 
-import type { AgentConfig } from "../config/types.js";
+import type { AgentConfig, McpLocalServerConfig } from "../config/types.js";
 import { OpenCodeClientWrapper } from "./client.js";
 import { EventStreamManager } from "./event-stream.js";
 import { PermissionHandler } from "./permission-handler.js";
@@ -28,8 +28,19 @@ import {
   publishLastChunkMarker,
   publishTask,
 } from "./event-publisher.js";
-import { resolveTransport, AgentEventEmitter, materializeMemory, WELL_KNOWN_PATHS } from "@a2a-wrapper/core";
-import type { EventTransport, EventTransportFn, BackendPaths } from "@a2a-wrapper/core";
+import {
+  resolveTransport,
+  AgentEventEmitter,
+  materializeMemory,
+  WELL_KNOWN_PATHS,
+  bootstrapSubAgents,
+} from "@a2a-wrapper/core";
+import type {
+  EventTransport,
+  EventTransportFn,
+  BackendPaths,
+  SynthesizedMcpDescriptor,
+} from "@a2a-wrapper/core";
 import type { OpenCodeEvent, Part as OpenCodePart, SessionStatus } from "./types.js";
 import { createDeferred, sleep } from "../utils/deferred.js";
 import { logger } from "../utils/logger.js";
@@ -101,6 +112,23 @@ export class OpenCodeExecutor implements AgentExecutor {
           paths,
         });
       }
+    }
+
+    // Sub-agents bootstrap — synthesize the a2a-mcp-skillmap MCP entry from
+    // the operator's `subAgents` config and merge it into `this.config.mcp`
+    // before `registerMcpServers` reads it.
+    if (this.config.subAgents?.agents?.length) {
+      const existingMcpKeys = new Set(Object.keys(this.config.mcp ?? {}));
+      const result = await bootstrapSubAgents({
+        subAgents: this.config.subAgents,
+        workspaceDir: this.config.opencode.projectDirectory || undefined,
+        parentLogLevel: this.config.logging.level ?? "info",
+        existingMcpKeys,
+      });
+      this.config.mcp = {
+        ...(this.config.mcp ?? {}),
+        [result.descriptor.key]: this.toOpencodeMcpEntry(result.descriptor),
+      };
     }
 
     const oc = this.config.opencode;
@@ -666,6 +694,25 @@ export class OpenCodeExecutor implements AgentExecutor {
   }
 
   // ── Message Helpers ─────────────────────────────────────────────────────
+
+  /**
+   * Translate a wrapper-agnostic {@link SynthesizedMcpDescriptor} into the
+   * local MCP entry shape consumed by OpenCode's MCP manager. Used after
+   * {@link bootstrapSubAgents} returns the canonical descriptor so the
+   * entry can be merged under `descriptor.key` (the reserved
+   * `a2a-subagents` key).
+   */
+  private toOpencodeMcpEntry(
+    descriptor: SynthesizedMcpDescriptor,
+  ): McpLocalServerConfig {
+    return {
+      type: "local",
+      command: [descriptor.command, ...descriptor.args],
+      environment: descriptor.env,
+      enabled: true,
+      timeout: 30_000,
+    };
+  }
 
   private extractText(message: A2AMessage): string {
     return message.parts

@@ -330,6 +330,77 @@ These are different concepts:
 
 Keep both in sync manually. You may want different descriptions: the agent card skill is marketing-friendly for orchestrators, while the memory skill is technical and detailed for the LLM.
 
+### Sub-Agents
+
+Expose remote A2A agents as MCP tools to the parent agent's underlying LLM runtime by spawning [`a2a-mcp-skillmap`](https://www.npmjs.com/package/a2a-mcp-skillmap) as a stdio child process. The parent reads a `subAgents` array from its config, generates a bridge configuration for skillmap, and registers the bridge as an MCP server before the executor handles its first request.
+
+See [`.kiro/specs/a2a-subagents/`](../../.kiro/specs/a2a-subagents/) for the full spec (requirements, design, and tasks).
+
+| Export | Description |
+|---|---|
+| `bootstrapSubAgents(input)` | Single entry point — runs validate → build → write → probe → synthesize and returns the canonical MCP descriptor. |
+| `validateSubAgents(agents, reservedKeys)` | Fail-fast checks (name uniqueness, URL shape, reserved-key collision) plus env-var substitution on `auth.token`. |
+| `buildBridgeConfig(source)` | Produce the JSON document `a2a-mcp-skillmap` consumes. |
+| `resolveBridgeConfigPath(workspaceDir)` | Compute `<workspace>/.a2a/subagents-bridge.json` (or a tmpdir fallback). |
+| `writeBridgeConfig(config, path)` | Write the bridge config with mode `0600`, creating intermediate directories. |
+| `probeSubAgents(agents, timeoutMs)` | Parallel reachability probes, never throws — one `ProbeResult` per agent. |
+| `buildSynthesizedMcpEntry(path)` | Produce the canonical, wrapper-agnostic `{ command, args }` MCP descriptor. |
+| `SubAgentsConfig` | Top-level config type — `{ agents: SubAgentConfig[]; options?: SubAgentsOptions }`. |
+| `SubAgentsOptions` | Bridge-wide options — `responseMode`, `probeTimeoutMs`, `syncBudgetMs` (sync budget passed to skillmap). |
+| `SubAgentConfig` | One sub-agent — `{ name, agentCardUrl, endpointUrlOverride?, auth? }`. |
+| `SubAgentAuthConfig` | Outbound auth — `none`, `bearer`, or `api_key` (with optional `headerName`). |
+| `SynthesizedMcpDescriptor` | The wrapper-agnostic descriptor each wrapper translates to its own MCP entry shape. |
+| `SUBAGENTS_MCP_KEY` | Reserved MCP map key — `"a2a-subagents"`. |
+| `SKILLMAP_PACKAGE_VERSION` | Pinned `a2a-mcp-skillmap` version invoked via `npx`. Bumping it is a deliberate, reviewable change. |
+| `SubAgentValidationError` | Thrown by `validateSubAgents` for every fail-fast case, with structured `details`. |
+
+#### Config example
+
+```json
+{
+  "subAgents": {
+    "agents": [
+      {
+        "name": "coding",
+        "agentCardUrl": "https://coding.example.com/.well-known/agent-card.json",
+        "auth": { "mode": "bearer", "token": "${CODING_AGENT_TOKEN}" }
+      },
+      {
+        "name": "research",
+        "agentCardUrl": "https://research.example.com/",
+        "endpointUrlOverride": "https://research.internal.local/.well-known/agent-card.json"
+      }
+    ],
+    "options": { "responseMode": "artifact", "probeTimeoutMs": 5000, "syncBudgetMs": 30000 }
+  }
+}
+```
+
+#### Pinned skillmap version
+
+The MCP entry invokes `npx -y a2a-mcp-skillmap@<SKILLMAP_PACKAGE_VERSION>` — never the unpinned package name — so a future skillmap release cannot silently change semantics. Bumping the pin is reviewed in PR.
+
+#### Wrapper integration
+
+Each wrapper provides a tiny adapter that maps the canonical `SynthesizedMcpDescriptor` into its own MCP entry shape (`McpStdioServerConfig` for a2a-copilot, `McpLocalServerConfig` for a2a-opencode), then merges the result into the resolved `mcp` map under `descriptor.key`:
+
+```typescript
+import { bootstrapSubAgents } from "@a2a-wrapper/core";
+
+if (this.config.subAgents?.agents?.length) {
+  const result = await bootstrapSubAgents({
+    subAgents: this.config.subAgents,
+    workspaceDir,
+    parentLogLevel: this.config.logging.level ?? "info",
+    existingMcpKeys: new Set(Object.keys(this.config.mcp ?? {})),
+  });
+  this.config.mcp = {
+    ...(this.config.mcp ?? {}),
+    [result.descriptor.key]: this.toWrapperMcpEntry(result.descriptor),
+  };
+}
+```
+
 ### A2A SDK Re-exports
 
 | Export | Source |

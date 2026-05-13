@@ -13,7 +13,7 @@ import { v4 as uuidv4 } from "uuid";
 import { readFile as fsReadFile } from "node:fs/promises";
 import { join } from "node:path";
 
-import type { AgentConfig } from "../config/types.js";
+import type { AgentConfig, McpStdioServerConfig } from "../config/types.js";
 import { SessionManager } from "./session-manager.js";
 import { McpEvidenceHooks } from "./mcp-hooks.js";
 import {
@@ -23,8 +23,18 @@ import {
   publishLastChunkMarker,
   publishTask,
 } from "./event-publisher.js";
-import { resolveTransport, AgentEventEmitter, materializeMemory, WELL_KNOWN_PATHS } from "@a2a-wrapper/core";
-import type { EventTransport, EventTransportFn } from "@a2a-wrapper/core";
+import {
+  resolveTransport,
+  AgentEventEmitter,
+  materializeMemory,
+  WELL_KNOWN_PATHS,
+  bootstrapSubAgents,
+} from "@a2a-wrapper/core";
+import type {
+  EventTransport,
+  EventTransportFn,
+  SynthesizedMcpDescriptor,
+} from "@a2a-wrapper/core";
 import { createDeferred } from "../utils/deferred.js";
 import { logger } from "../utils/logger.js";
 
@@ -59,6 +69,23 @@ export class CopilotExecutor implements AgentExecutor {
           paths: WELL_KNOWN_PATHS.copilot,
         });
       }
+    }
+
+    // Sub-agents bootstrap — synthesize the a2a-mcp-skillmap MCP entry from
+    // the operator's `subAgents` config and merge it into `this.config.mcp`
+    // before any MCP-using code (the Copilot client / sessions) reads it.
+    if (this.config.subAgents?.agents?.length) {
+      const existingMcpKeys = new Set(Object.keys(this.config.mcp ?? {}));
+      const result = await bootstrapSubAgents({
+        subAgents: this.config.subAgents,
+        workspaceDir: this.config.copilot.workspaceDirectory || undefined,
+        parentLogLevel: this.config.logging.level ?? "info",
+        existingMcpKeys,
+      });
+      this.config.mcp = {
+        ...(this.config.mcp ?? {}),
+        [result.descriptor.key]: this.toCopilotMcpEntry(result.descriptor),
+      };
     }
 
     // Create Copilot client
@@ -492,6 +519,25 @@ export class CopilotExecutor implements AgentExecutor {
   }
 
   // ── Helpers ─────────────────────────────────────────────────────────────
+
+  /**
+   * Translate a wrapper-agnostic {@link SynthesizedMcpDescriptor} into the
+   * stdio MCP entry shape consumed by the Copilot SDK / this wrapper's
+   * resolved `mcp` map. Used after {@link bootstrapSubAgents} returns the
+   * canonical descriptor so the entry can be merged under
+   * `descriptor.key` (the reserved `a2a-subagents` key).
+   */
+  private toCopilotMcpEntry(
+    descriptor: SynthesizedMcpDescriptor,
+  ): McpStdioServerConfig {
+    return {
+      type: "stdio",
+      command: descriptor.command,
+      args: descriptor.args,
+      env: descriptor.env,
+      enabled: true,
+    };
+  }
 
   private extractText(message: A2AMessage): string {
     return message.parts

@@ -1,5 +1,24 @@
 # Changelog
 
+## Unreleased
+
+### Minor Changes
+
+- **A2A Sub-Agents** — new `subAgents` config section lets a parent A2A agent expose remote A2A agents as MCP tools by spawning [`a2a-mcp-skillmap`](https://www.npmjs.com/package/a2a-mcp-skillmap) as a stdio MCP child process. The bridge is registered under the reserved `a2a-subagents` key in the resolved `mcp` map, so wrapper-side MCP wiring discovers it without any wrapper-specific code.
+- **Bootstrap pipeline** — single entry point `bootstrapSubAgents()` orchestrates the full sequence: validate → build → write bridge config → probe → synthesize MCP descriptor. Wrapper integration is ~10 lines per wrapper.
+- **Pinned skillmap version** — new `SKILLMAP_PACKAGE_VERSION` constant pins the `a2a-mcp-skillmap` version invoked via `npx` (initial pin: `0.2.0`). Bumping the pin is a deliberate, reviewable change.
+- **Reachability probe** — `probeSubAgents()` runs parallel HTTP probes against each sub-agent's effective URL at startup with structured `ProbeResult`s. Failures log warnings but never abort startup.
+- **Reserved-key collision detection** — fail-fast validation rejects configs that manually define an MCP server under `a2a-subagents`.
+- **Env-var substitution** — `auth.token` may reference environment variables via `${VAR}` syntax. Missing variables produce a startup warning and the auth block is omitted (the bridge calls without credentials).
+- **BaseAgentConfig extended** — added optional `subAgents?: SubAgentsConfig` field to the base config type.
+
+### New Exports
+
+- Types: `SubAgentConfig`, `SubAgentAuthConfig`, `SubAgentsOptions`, `SubAgentsConfig`, `SynthesizedMcpDescriptor`, `ProbeResult`, `BootstrapInput`, `BootstrapResult`, `BridgeConfigSource`, `BridgeConfigAgentEntry`, `BridgeConfig`, `ValidationOutcome`, `SubAgentValidationReason`, `SubAgentValidationErrorDetails`
+- Functions: `validateSubAgents`, `buildBridgeConfig`, `resolveBridgeConfigPath`, `writeBridgeConfig`, `probeSubAgents`, `buildSynthesizedMcpEntry`, `bootstrapSubAgents`
+- Error class: `SubAgentValidationError`
+- Constants: `SUBAGENTS_MCP_KEY`, `SKILLMAP_PACKAGE_VERSION`
+
 ## 1.4.0
 
 ### Minor Changes

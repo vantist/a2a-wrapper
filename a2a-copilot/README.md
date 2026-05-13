@@ -347,6 +347,35 @@ Both should be maintained — the agent card tells callers what the agent can do
 
 See [`agents/filesystem-assistant/`](agents/filesystem-assistant/) for a working example with instructions, a skill, and a helper script.
 
+## Calling Other A2A Agents
+
+Expose remote A2A agents as MCP tools by declaring them under `subAgents` in your config. The wrapper spawns [`a2a-mcp-skillmap`](https://www.npmjs.com/package/a2a-mcp-skillmap) as a stdio MCP server and registers it under the reserved `a2a-subagents` key in the resolved `mcp` map. Each remote skill becomes a callable tool the Copilot LLM can dispatch like any other MCP tool.
+
+```json
+{
+  "subAgents": {
+    "agents": [
+      {
+        "name": "coding",
+        "agentCardUrl": "https://coding.example.com/.well-known/agent-card.json",
+        "auth": { "mode": "bearer", "token": "${CODING_AGENT_TOKEN}" }
+      },
+      {
+        "name": "research",
+        "agentCardUrl": "https://research.example.com/",
+        "endpointUrlOverride": "https://research.internal.local/.well-known/agent-card.json"
+      }
+    ]
+  }
+}
+```
+
+The Copilot LLM sees `coding__<skillId>` and `research__<skillId>` tools (one per skill advertised in each sub-agent's card). Tokens may reference environment variables via `${VAR}` syntax — missing variables produce a startup warning and the auth block is omitted (the bridge calls without credentials).
+
+When `subAgents` is absent or `agents` is empty, the wrapper skips every sub-agent code path with no side effects.
+
+See [`agents/multi-agent/`](agents/multi-agent/) for a working example.
+
 ## Event Transport (Observability)
 
 Agents emit structured trace events for MCP tool calls, reasoning, and lifecycle. By default, these flow as sideband artifacts through the A2A protocol itself — orchestrators discover them via the `urn:x-a2a:trace:v1` extension on the agent card.

@@ -13,9 +13,10 @@ import type { AgentConfig } from "./types.js";
  * Fields that are genuinely optional at runtime (`memory`, `configDir`) are
  * typed as `undefined` here rather than hidden behind an unsafe cast.
  */
-export type DefaultAgentConfig = Omit<Required<AgentConfig>, "memory" | "configDir"> & {
+export type DefaultAgentConfig = Omit<Required<AgentConfig>, "memory" | "configDir" | "subAgents"> & {
   memory: undefined;
   configDir: undefined;
+  subAgents: undefined;
 };
 
 /** Deep-frozen default config. Never mutate — always merge over. */
@@ -71,4 +72,5 @@ export const DEFAULTS: Readonly<DefaultAgentConfig> = Object.freeze({
   },
   memory: undefined,
   configDir: undefined,
+  subAgents: undefined,
 });
