@@ -1,0 +1,48 @@
+{
+  "agentCard": {
+    "name": "Orchestrator Agent",
+    "description": "Parent agent that delegates to coding and research sub-agents via the a2a-mcp-skillmap bridge. The LLM sees coding__review, coding__explain, research__search, and research__summarize as ordinary MCP tools.",
+    "version": "1.0.0",
+    "protocolVersion": "0.3.0",
+    "defaultInputModes": ["text"],
+    "defaultOutputModes": ["text"],
+    "streaming": true,
+    "skills": [
+      {
+        "id": "orchestrate",
+        "name": "Multi-Agent Orchestrator",
+        "description": "Routes requests to the coding or research sub-agent and synthesizes their responses.",
+        "tags": ["orchestrator", "routing", "multi-agent"]
+      }
+    ]
+  },
+
+  "server": {
+    "port": 3010,
+    "hostname": "0.0.0.0",
+    "advertiseHost": "localhost",
+    "advertiseProtocol": "http"
+  },
+
+  "subAgents": {
+    "agents": [
+      {
+        "name": "coding",
+        "agentCardUrl": "http://127.0.0.1:4101/.well-known/agent-card.json"
+      },
+      {
+        "name": "research",
+        "agentCardUrl": "http://127.0.0.1:4102/.well-known/agent-card.json"
+      }
+    ],
+    "options": {
+      "responseMode": "artifact",
+      "probeTimeoutMs": 5000,
+      "syncBudgetMs": 30000
+    }
+  },
+
+  "logging": {
+    "level": "info"
+  }
+}

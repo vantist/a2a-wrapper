@@ -1,0 +1,15 @@
+{
+  "name": "a2a-subagents-scenario",
+  "version": "1.0.0",
+  "description": "Self-contained end-to-end example: two A2A sub-agents exposed as MCP tools via a2a-mcp-skillmap.",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "start:coding":   "node agents/coding-agent.mjs",
+    "start:research": "node agents/research-agent.mjs",
+    "test":           "node test/run-scenario.mjs"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}

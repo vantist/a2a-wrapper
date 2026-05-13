@@ -1,0 +1,114 @@
+{
+  "$comment": [
+    "Multi-Agent Example — Demonstrates the `subAgents` configuration.",
+    "",
+    "This agent acts as a parent that delegates to two remote A2A sub-agents",
+    "by exposing them as MCP tools via `a2a-mcp-skillmap`. The bridge is",
+    "spawned automatically as a stdio MCP server and registered under the",
+    "reserved `a2a-subagents` key in the resolved `mcp` map.",
+    "",
+    "Sub-agents declared here become callable as ordinary MCP tools by the",
+    "Copilot SDK. The LLM sees `coding__<skill>` and `research__<skill>`",
+    "tools (one per skill advertised in each sub-agent's card) and can",
+    "dispatch to them like any other MCP tool.",
+    "",
+    "Two illustrative entries below:",
+    "  - `coding`   — uses `${EXAMPLE_TOKEN}` env-var substitution for auth",
+    "  - `research` — uses `endpointUrlOverride` to point the bridge at an",
+    "                 internal URL that differs from the agent card's public URL"
+  ],
+
+  "agentCard": {
+    "name": "Multi-Agent Orchestrator",
+    "description": "Parent agent that delegates to coding and research sub-agents via the a2a-mcp-skillmap bridge.",
+    "version": "1.0.0",
+    "protocolVersion": "0.3.0",
+
+    "defaultInputModes": ["text"],
+    "defaultOutputModes": ["text"],
+    "streaming": true,
+
+    "skills": [
+      {
+        "id": "orchestrator",
+        "name": "Multi-Agent Orchestrator",
+        "description": "Routes user requests to the most appropriate sub-agent and synthesizes responses",
+        "tags": ["orchestrator", "routing", "delegation"]
+      }
+    ]
+  },
+
+  "server": {
+    "port": 3010,
+    "hostname": "0.0.0.0",
+    "advertiseHost": "localhost",
+    "advertiseProtocol": "http"
+  },
+
+  "copilot": {
+    "model": "claude-sonnet-4.5",
+    "streaming": true,
+    "systemPromptMode": "replace",
+    "systemPrompt": "You are an orchestrator agent. Inspect available tools and delegate user requests to the most appropriate sub-agent. Synthesize their responses into a single, coherent answer for the user."
+  },
+
+  "subAgents": {
+    "$comment": [
+      "Each entry exposes a remote A2A agent as MCP tools.",
+      "",
+      "name              — Required. Stable identifier prefixed onto generated tool names.",
+      "                    Allowed chars: letters, digits, hyphens, underscores. Must be unique.",
+      "agentCardUrl      — Required. URL of the sub-agent's A2A agent card.",
+      "                    Typically https://<host>/.well-known/agent-card.json",
+      "endpointUrlOverride — Optional. Override for the URL the bridge probes when",
+      "                      the agent card declares an endpoint that differs from",
+      "                      where the agent is actually reachable (NAT, port-forward,",
+      "                      internal vs external).",
+      "auth              — Optional. Outbound credentials forwarded to the sub-agent.",
+      "                    Modes: 'none' | 'bearer' | 'api_key'.",
+      "                    Tokens may reference env vars via ${VAR_NAME} syntax.",
+      "                    Missing env vars produce a startup warning and the auth",
+      "                    block is omitted (the bridge calls without credentials).",
+      "",
+      "options.responseMode  — Skillmap response shaping mode. Default 'artifact'.",
+      "options.probeTimeoutMs — Startup reachability probe timeout. Default 5000.",
+      "options.syncBudgetMs  — How long (ms) the bridge waits for an A2A response",
+      "                        before returning a task handle for async polling.",
+      "                        Default 30000. Set to 0 to wait indefinitely."
+    ],
+
+    "agents": [
+      {
+        "name": "coding",
+        "agentCardUrl": "https://coding.example.com/.well-known/agent-card.json",
+        "auth": {
+          "mode": "bearer",
+          "token": "${EXAMPLE_TOKEN}"
+        }
+      },
+      {
+        "name": "research",
+        "agentCardUrl": "https://research.example.com/.well-known/agent-card.json",
+        "endpointUrlOverride": "https://research.internal.local/.well-known/agent-card.json"
+      }
+    ],
+
+    "options": {
+      "responseMode": "artifact",
+      "probeTimeoutMs": 5000,
+      "syncBudgetMs": 30000
+    }
+  },
+
+  "features": {
+    "streamArtifactChunks": false
+  },
+
+  "timeouts": {
+    "prompt": 300000
+  },
+
+  "logging": {
+    "level": "info"
+  }
+}

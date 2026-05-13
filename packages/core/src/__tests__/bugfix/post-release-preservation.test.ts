@@ -238,8 +238,13 @@ describe("Test 2d — a2a-opencode Runtime Preservation", () => {
     const relativePaths = tsFiles.map((f) => f.replace(opencodeSrcDir + "/", ""));
 
     // Snapshot: these are the .ts files that exist in the unfixed code
+    // Note: post-release additions like __tests__/sub-agents.test.ts (added
+    // by the a2a-subagents spec) are appended in alphabetical order.
     expect(relativePaths).toEqual([
+      "__tests__/config-schema.test.ts",
+      "__tests__/schema-up-to-date.test.ts",
       "__tests__/smoke.test.ts",
+      "__tests__/sub-agents.test.ts",
       "cli.ts",
       "config/defaults.ts",
       "config/index.ts",
@@ -276,6 +281,6 @@ describe("Test 2d — a2a-opencode Runtime Preservation", () => {
     }
 
     // Verify the number of files matches our expected count
-    expect(Object.keys(hashMap)).toHaveLength(20);
+    expect(Object.keys(hashMap)).toHaveLength(23);
   });
 });
