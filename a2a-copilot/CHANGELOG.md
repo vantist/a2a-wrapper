@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.5.0 — 2026-05-13
 
 ### Minor Changes
 
@@ -11,7 +11,7 @@
 ### Patch Changes
 
 - Updated dependencies
-  - @a2a-wrapper/core (sub-agents support)
+  - @a2a-wrapper/core@1.5.0
 
 ## 1.4.0
 
