@@ -154,6 +154,22 @@ export class SessionManager {
       opts.hooks = this.mcpHooks.getHooks();
     }
 
+    // Custom LLM provider (BYOK — Bring Your Own Key).
+    // Passes directly to the SDK's session.create RPC as the `provider` field.
+    // When absent, the SDK uses the default GitHub Copilot API.
+    if (copilotCfg.provider) {
+      const p = copilotCfg.provider;
+      const providerOpt: Record<string, unknown> = {
+        baseUrl: p.baseUrl,
+      };
+      if (p.type) providerOpt.type = p.type;
+      if (p.apiKey) providerOpt.apiKey = p.apiKey;
+      if (p.bearerToken) providerOpt.bearerToken = p.bearerToken;
+      if (p.wireApi) providerOpt.wireApi = p.wireApi;
+      if (p.azure) providerOpt.azure = p.azure;
+      opts.provider = providerOpt;
+    }
+
     // Custom agents
     const customAgents = this.config.customAgents;
     if (customAgents && customAgents.length > 0) {

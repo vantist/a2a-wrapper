@@ -1,0 +1,96 @@
+{
+  "$comment": [
+    "Ollama Agent — runs entirely locally with no GitHub Copilot auth required.",
+    "",
+    "This example shows how to point the wrapper at a locally-running Ollama instance",
+    "instead of the GitHub Copilot API (BYOK: Bring Your Own Key).",
+    "",
+    "Prerequisites:",
+    "  1. Install Ollama:  https://ollama.com",
+    "  2. Pull a model:    ollama pull qwen2.5-coder:7b",
+    "  3. Start Ollama:    ollama serve   (it listens on http://localhost:11434 by default)",
+    "",
+    "To run:",
+    "  ./agents/ollama/start.sh start",
+    "",
+    "To use a different model, change copilot.model and make sure you have pulled it:",
+    "  ollama pull llama3.2",
+    "  # then set \"model\": \"llama3.2\" below",
+    "",
+    "You can also override model and provider entirely via environment variables,",
+    "using the same vars as the gh-copilot CLI:",
+    "  export COPILOT_PROVIDER_BASE_URL=http://localhost:11434/v1",
+    "  export COPILOT_MODEL=qwen2.5-coder:7b",
+    "  ./agents/ollama/start.sh start"
+  ],
+
+  "agentCard": {
+    "name": "Ollama Agent",
+    "description": "A locally-running A2A agent powered by Ollama. No GitHub Copilot account required.",
+    "version": "1.0.0",
+    "protocolVersion": "0.3.0",
+
+    "defaultInputModes": ["text"],
+    "defaultOutputModes": ["text"],
+    "streaming": true,
+
+    "skills": [
+      {
+        "id": "general-assistant",
+        "name": "General Assistant",
+        "description": "Answer questions, reason through problems, and assist with general tasks using a locally-running model",
+        "tags": ["general", "qa", "reasoning", "local", "ollama"]
+      }
+    ]
+  },
+
+  "server": {
+    "$comment": "Using port 3002 so this agent can run alongside the example (3000) and filesystem-assistant (3001).",
+    "port": 3002,
+    "hostname": "0.0.0.0",
+    "advertiseHost": "localhost",
+    "advertiseProtocol": "http"
+  },
+
+  "copilot": {
+    "$comment": [
+      "provider — points the SDK at your local Ollama instance instead of GitHub Copilot.",
+      "",
+      "  type: 'openai'  — Ollama exposes an OpenAI-compatible API.",
+      "  baseUrl         — Ollama's default endpoint. Append /v1 for the OpenAI-compatible path.",
+      "  wireApi         — Use 'completions' (Chat Completions API) for broadest Ollama model",
+      "                    compatibility. Most local models do not support the Responses API.",
+      "",
+      "  No apiKey is needed — Ollama does not require authentication.",
+      "",
+      "model — must match the model name you pulled with 'ollama pull'.",
+      "        Run 'ollama list' to see what's available locally.",
+      "",
+      "Note: Ollama models must support tool calling (function calling) and streaming.",
+      "      Recommended models: qwen2.5-coder:7b, qwen2.5:7b, llama3.2, mistral-nemo"
+    ],
+    "model": "qwen2.5-coder:7b",
+    "streaming": true,
+    "systemPromptMode": "replace",
+    "systemPrompt": "You are a helpful local AI assistant. Answer questions clearly and concisely. You run entirely on the user's local machine via Ollama.",
+    "provider": {
+      "type": "openai",
+      "baseUrl": "http://localhost:11434/v1",
+      "wireApi": "completions"
+    }
+  },
+
+  "features": {
+    "streamArtifactChunks": false
+  },
+
+  "timeouts": {
+    "$comment": "Local models can be slower than cloud APIs, especially on first run. 300 s gives headroom.",
+    "prompt": 300000
+  },
+
+  "logging": {
+    "$comment": "Use 'debug' if you need to trace SDK-level events during development.",
+    "level": "info"
+  }
+}

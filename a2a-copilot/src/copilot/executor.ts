@@ -199,6 +199,19 @@ export class CopilotExecutor implements AgentExecutor {
     // Auto-approve MCP tool permissions for headless context building
     opts.onPermissionRequest = approveAll;
 
+    // Custom LLM provider (BYOK) — must be forwarded here too since buildContext
+    // creates its own session directly rather than going through SessionManager.
+    if (this.config.copilot.provider) {
+      const p = this.config.copilot.provider;
+      const providerOpt: Record<string, unknown> = { baseUrl: p.baseUrl };
+      if (p.type) providerOpt.type = p.type;
+      if (p.apiKey) providerOpt.apiKey = p.apiKey;
+      if (p.bearerToken) providerOpt.bearerToken = p.bearerToken;
+      if (p.wireApi) providerOpt.wireApi = p.wireApi;
+      if (p.azure) providerOpt.azure = p.azure;
+      opts.provider = providerOpt;
+    }
+
     const session = await (this.client as any).createSession(opts);
     const sessionId = session.sessionId ?? "context-build";
 

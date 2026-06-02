@@ -147,6 +147,17 @@
       ],
       "type": "object"
     },
+    "AzureProviderOptions": {
+      "additionalProperties": false,
+      "description": "Azure-specific provider options. Only relevant when `type` is \"azure\".",
+      "properties": {
+        "apiVersion": {
+          "description": "Azure OpenAI API version. Default: \"2024-10-21\"",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
     "CopilotConfig": {
       "additionalProperties": false,
       "description": "How the wrapper connects to and interacts with GitHub Copilot SDK.",
@@ -170,6 +181,10 @@
         "model": {
           "description": "Default model for sessions (e.g. \"gpt-4.1\", \"claude-sonnet-4.5\")",
           "type": "string"
+        },
+        "provider": {
+          "$ref": "#/definitions/ProviderConfig",
+          "description": "Custom LLM provider configuration (BYOK — Bring Your Own Key).\n\nWhen set, bypasses GitHub Copilot and connects directly to the specified provider. Supports Ollama (local), OpenAI, Anthropic, Azure OpenAI, Azure AI Foundry, vLLM, LiteLLM, and any OpenAI-compatible endpoint.\n\nOmit this field entirely to use the default GitHub Copilot API.\n\nNote: when provider is set, the `model` field is REQUIRED — the SDK cannot auto-detect models from custom providers."
         },
         "streaming": {
           "description": "Enable streaming by default on sessions (default: true)",
@@ -388,6 +403,49 @@
           "type": "array"
         }
       },
+      "type": "object"
+    },
+    "ProviderConfig": {
+      "additionalProperties": false,
+      "description": "Custom LLM provider configuration (BYOK — Bring Your Own Key).\n\nWhen set, sessions use this provider instead of GitHub Copilot. Omit entirely to use the default GitHub Copilot API (no BYOK).\n\nSupported providers and their recommended settings:\n\n| Provider          | type        | baseUrl                                | wireApi        | |-------------------|-------------|----------------------------------------|----------------| | GitHub Copilot    | (omit)      | (omit)                                 | (omit)         | | Ollama (local)    | \"openai\"    | http://localhost:11434/v1              | \"completions\"  | | OpenAI            | \"openai\"    | https://api.openai.com/v1              | \"responses\"    | | Anthropic         | \"anthropic\" | https://api.anthropic.com              | (N/A)          | | Azure OpenAI      | \"azure\"     | https://<resource>.openai.azure.com    | \"completions\"  | | Azure AI Foundry  | \"openai\"    | https://<resource>.openai.azure.com/openai/v1/ | \"responses\" | | vLLM / LiteLLM   | \"openai\"    | http://<host>:<port>/v1                | \"completions\"  |",
+      "properties": {
+        "apiKey": {
+          "description": "API key for authentication. Optional for local providers (e.g. Ollama).\n\nCan also be set via environment variable COPILOT_PROVIDER_API_KEY.",
+          "type": "string"
+        },
+        "azure": {
+          "$ref": "#/definitions/AzureProviderOptions",
+          "description": "Azure-specific options. Only relevant when type is \"azure\"."
+        },
+        "baseUrl": {
+          "description": "Required. API endpoint base URL.\n\n- OpenAI / compatible: include the full path, e.g. https://api.openai.com/v1\n- Ollama local: http://localhost:11434/v1\n- Azure (native): just the host, e.g. https://my-resource.openai.azure.com   (do NOT append /openai/v1 — the SDK constructs the path)\n- Anthropic: https://api.anthropic.com",
+          "type": "string"
+        },
+        "bearerToken": {
+          "description": "Bearer token for authentication. Sets the Authorization header directly. Takes precedence over apiKey when both are set. Use for services that require bearer token auth instead of an API key.",
+          "type": "string"
+        },
+        "type": {
+          "description": "Provider type. Determines the API format and auth mechanism.\n\n- \"openai\"    — OpenAI Chat Completions API and any compatible endpoint                 (Ollama, vLLM, LiteLLM, Azure AI Foundry, etc.)\n- \"azure\"     — Native Azure OpenAI Service (*.openai.azure.com)\n- \"anthropic\" — Anthropic Messages API (Claude models)\n\nDefault: \"openai\"",
+          "enum": [
+            "openai",
+            "azure",
+            "anthropic"
+          ],
+          "type": "string"
+        },
+        "wireApi": {
+          "description": "Wire API format used to communicate with the model endpoint. Only applies to \"openai\" and \"azure\" provider types. Anthropic always uses the Messages API regardless of this setting.\n\n- \"completions\" (default) — Chat Completions API (/chat/completions).   Broadest model compatibility. Recommended for Ollama, vLLM, local models.\n- \"responses\" — Responses API. Provides multi-turn state management,   tool namespacing, and reasoning support.   Recommended for OpenAI GPT-4+ and Azure AI Foundry (GPT-5 series).",
+          "enum": [
+            "completions",
+            "responses"
+          ],
+          "type": "string"
+        }
+      },
+      "required": [
+        "baseUrl"
+      ],
       "type": "object"
     },
     "ServerConfig": {

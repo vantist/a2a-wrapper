@@ -74,6 +74,95 @@ export interface ServerConfig {
   advertiseProtocol?: "http" | "https";
 }
 
+// ─── Provider Config (BYOK) ─────────────────────────────────────────────────
+
+/**
+ * Azure-specific provider options.
+ * Only relevant when `type` is "azure".
+ */
+export interface AzureProviderOptions {
+  /**
+   * Azure OpenAI API version.
+   * Default: "2024-10-21"
+   */
+  apiVersion?: string;
+}
+
+/**
+ * Custom LLM provider configuration (BYOK — Bring Your Own Key).
+ *
+ * When set, sessions use this provider instead of GitHub Copilot.
+ * Omit entirely to use the default GitHub Copilot API (no BYOK).
+ *
+ * Supported providers and their recommended settings:
+ *
+ * | Provider          | type        | baseUrl                                | wireApi        |
+ * |-------------------|-------------|----------------------------------------|----------------|
+ * | GitHub Copilot    | (omit)      | (omit)                                 | (omit)         |
+ * | Ollama (local)    | "openai"    | http://localhost:11434/v1              | "completions"  |
+ * | OpenAI            | "openai"    | https://api.openai.com/v1              | "responses"    |
+ * | Anthropic         | "anthropic" | https://api.anthropic.com              | (N/A)          |
+ * | Azure OpenAI      | "azure"     | https://<resource>.openai.azure.com    | "completions"  |
+ * | Azure AI Foundry  | "openai"    | https://<resource>.openai.azure.com/openai/v1/ | "responses" |
+ * | vLLM / LiteLLM   | "openai"    | http://<host>:<port>/v1                | "completions"  |
+ */
+export interface ProviderConfig {
+  /**
+   * Provider type. Determines the API format and auth mechanism.
+   *
+   * - "openai"    — OpenAI Chat Completions API and any compatible endpoint
+   *                 (Ollama, vLLM, LiteLLM, Azure AI Foundry, etc.)
+   * - "azure"     — Native Azure OpenAI Service (*.openai.azure.com)
+   * - "anthropic" — Anthropic Messages API (Claude models)
+   *
+   * Default: "openai"
+   */
+  type?: "openai" | "azure" | "anthropic";
+
+  /**
+   * Required. API endpoint base URL.
+   *
+   * - OpenAI / compatible: include the full path, e.g. https://api.openai.com/v1
+   * - Ollama local: http://localhost:11434/v1
+   * - Azure (native): just the host, e.g. https://my-resource.openai.azure.com
+   *   (do NOT append /openai/v1 — the SDK constructs the path)
+   * - Anthropic: https://api.anthropic.com
+   */
+  baseUrl: string;
+
+  /**
+   * API key for authentication. Optional for local providers (e.g. Ollama).
+   *
+   * Can also be set via environment variable COPILOT_PROVIDER_API_KEY.
+   */
+  apiKey?: string;
+
+  /**
+   * Bearer token for authentication. Sets the Authorization header directly.
+   * Takes precedence over apiKey when both are set.
+   * Use for services that require bearer token auth instead of an API key.
+   */
+  bearerToken?: string;
+
+  /**
+   * Wire API format used to communicate with the model endpoint.
+   * Only applies to "openai" and "azure" provider types.
+   * Anthropic always uses the Messages API regardless of this setting.
+   *
+   * - "completions" (default) — Chat Completions API (/chat/completions).
+   *   Broadest model compatibility. Recommended for Ollama, vLLM, local models.
+   * - "responses" — Responses API. Provides multi-turn state management,
+   *   tool namespacing, and reasoning support.
+   *   Recommended for OpenAI GPT-4+ and Azure AI Foundry (GPT-5 series).
+   */
+  wireApi?: "completions" | "responses";
+
+  /**
+   * Azure-specific options. Only relevant when type is "azure".
+   */
+  azure?: AzureProviderOptions;
+}
+
 // ─── Copilot SDK Connection Config ──────────────────────────────────────────
 
 /** How the wrapper connects to and interacts with GitHub Copilot SDK. */
@@ -124,6 +213,19 @@ export interface CopilotConfig {
   contextPrompt?: string;
   /** Working directory for context file operations */
   workspaceDirectory?: string;
+  /**
+   * Custom LLM provider configuration (BYOK — Bring Your Own Key).
+   *
+   * When set, bypasses GitHub Copilot and connects directly to the specified
+   * provider. Supports Ollama (local), OpenAI, Anthropic, Azure OpenAI,
+   * Azure AI Foundry, vLLM, LiteLLM, and any OpenAI-compatible endpoint.
+   *
+   * Omit this field entirely to use the default GitHub Copilot API.
+   *
+   * Note: when provider is set, the `model` field is REQUIRED — the SDK
+   * cannot auto-detect models from custom providers.
+   */
+  provider?: ProviderConfig;
 }
 
 // ─── Session Config ─────────────────────────────────────────────────────────
