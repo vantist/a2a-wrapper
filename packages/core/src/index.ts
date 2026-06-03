@@ -22,7 +22,7 @@
 
 export { LogLevel, Logger, createLogger } from "./utils/logger.js";
 export { type Deferred, createDeferred, sleep } from "./utils/deferred.js";
-export { deepMerge, substituteEnvTokens } from "./utils/deep-merge.js";
+export { deepMerge, substituteEnvTokens, substituteEnvTokensInString, substituteEnvTokensInRecord } from "./utils/deep-merge.js";
 
 // ─── Configuration ──────────────────────────────────────────────────────────
 

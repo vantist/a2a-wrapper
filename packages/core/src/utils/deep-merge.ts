@@ -91,20 +91,46 @@ export function deepMerge<T extends Record<string, unknown>>(
 }
 
 /**
- * Replace `$VAR_NAME` tokens in a string array with matching environment
- * variable values from `process.env`.
+ * Replace environment-variable tokens in a single string.
  *
- * Each string in the input array is scanned for tokens matching the pattern
- * `$WORD_CHARS` (i.e. `$` followed by one or more `[A-Za-z0-9_]` characters).
- * When a matching environment variable exists, the token is replaced with its
- * value. Unmatched tokens (no corresponding env var) are left unchanged.
+ * Two token forms are supported:
+ * - `${VAR_NAME}` — explicit form, recommended. Works mid-string, e.g.
+ *   `"Bearer ${TOKEN}"`.
+ * - `$VAR_NAME` — bare form, kept for backward compatibility, e.g.
+ *   `"$WORKSPACE_DIR"`.
  *
- * The function returns a **new array** — the input array is not mutated.
+ * Tokens with no matching environment variable are left **unchanged** so that
+ * literal `$` usage and misconfigurations remain visible rather than being
+ * silently replaced with an empty string.
  *
- * @param args - Array of strings potentially containing `$VAR_NAME` tokens.
- *   Each element is independently processed for token substitution.
- * @returns A new array with environment variable tokens substituted where
- *   matching values exist. Unmatched tokens remain as-is.
+ * @param value - String potentially containing env-var tokens.
+ * @returns The string with resolvable tokens substituted.
+ *
+ * @example
+ * ```typescript
+ * // process.env.TOKEN = "abc"
+ * substituteEnvTokensInString("Bearer ${TOKEN}") // "Bearer abc"
+ * substituteEnvTokensInString("$HOME/x")          // "/home/user/x"
+ * substituteEnvTokensInString("${MISSING}")       // "${MISSING}" (unchanged)
+ * ```
+ */
+export function substituteEnvTokensInString(value: string): string {
+  return value
+    .replace(/\$\{(\w+)\}/g, (match, name: string) => process.env[name] ?? match)
+    .replace(/\$(\w+)/g, (match, name: string) => process.env[name] ?? match);
+}
+
+/**
+ * Replace `$VAR_NAME` / `${VAR_NAME}` tokens in a string array with matching
+ * environment variable values from `process.env`.
+ *
+ * Each element is processed via {@link substituteEnvTokensInString}, so both
+ * the bare (`$VAR`) and explicit (`${VAR}`) token forms are supported.
+ * Unmatched tokens are left unchanged. Returns a **new array** — the input is
+ * not mutated.
+ *
+ * @param args - Array of strings potentially containing env-var tokens.
+ * @returns A new array with resolvable tokens substituted.
  *
  * @example
  * ```typescript
@@ -116,7 +142,37 @@ export function deepMerge<T extends Record<string, unknown>>(
  * ```
  */
 export function substituteEnvTokens(args: string[]): string[] {
-  return args.map((arg) =>
-    arg.replace(/\$(\w+)/g, (_match, name: string) => process.env[name] ?? _match),
-  );
+  return args.map(substituteEnvTokensInString);
+}
+
+/**
+ * Replace env-var tokens in every value of a string-keyed string map.
+ *
+ * Each value is processed via {@link substituteEnvTokensInString} (supporting
+ * both `${VAR}` and `$VAR` forms). Non-string values are passed through
+ * untouched. Returns a **new object** — the input is not mutated. Passing
+ * `undefined` returns `undefined`, which is convenient for optional config
+ * fields like MCP `env` / `headers`.
+ *
+ * @param record - Map of string keys to string values (e.g. HTTP headers,
+ *   process environment variables). May be `undefined`.
+ * @returns A new map with resolvable tokens substituted, or `undefined` when
+ *   the input was `undefined`.
+ *
+ * @example
+ * ```typescript
+ * // process.env.LINEAR_API_KEY = "lin_xxx"
+ * substituteEnvTokensInRecord({ Authorization: "Bearer ${LINEAR_API_KEY}" })
+ * // Returns: { Authorization: "Bearer lin_xxx" }
+ * ```
+ */
+export function substituteEnvTokensInRecord(
+  record: Record<string, string> | undefined,
+): Record<string, string> | undefined {
+  if (!record) return record;
+  const out: Record<string, string> = {};
+  for (const [key, val] of Object.entries(record)) {
+    out[key] = typeof val === "string" ? substituteEnvTokensInString(val) : val;
+  }
+  return out;
 }

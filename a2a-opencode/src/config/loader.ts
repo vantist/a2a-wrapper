@@ -11,6 +11,7 @@
 
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
+import { substituteEnvTokensInString, substituteEnvTokensInRecord } from "@a2a-wrapper/core";
 import { DEFAULTS } from "./defaults.js";
 import type { AgentConfig, McpServerConfig } from "./types.js";
 
@@ -174,34 +175,8 @@ export function resolveConfig(
 // ─── Env Token Substitution ──────────────────────────────────────────────────
 
 /**
- * Replace env-var tokens in a single string. Supports two forms:
- *   - `${VAR_NAME}` — explicit, recommended (works mid-string, e.g. "Bearer ${TOKEN}")
- *   - `$VAR_NAME`   — bare, for backward compatibility (e.g. "$WORKSPACE_DIR")
- *
- * Tokens with no matching environment variable are left unchanged so that
- * literal `$` usage and misconfigurations are visible rather than silently
- * blanked out.
- */
-function substituteEnvTokens(value: string): string {
-  return value
-    .replace(/\$\{(\w+)\}/g, (match, name: string) => process.env[name] ?? match)
-    .replace(/\$(\w+)/g, (match, name: string) => process.env[name] ?? match);
-}
-
-/** Apply env-token substitution to every value of a string-map. */
-function substituteEnvTokensInRecord(
-  record: Record<string, string> | undefined,
-): Record<string, string> | undefined {
-  if (!record) return record;
-  const out: Record<string, string> = {};
-  for (const [key, val] of Object.entries(record)) {
-    out[key] = typeof val === "string" ? substituteEnvTokens(val) : val;
-  }
-  return out;
-}
-
-/**
- * Replace env-var tokens across MCP server configs:
+ * Replace env-var tokens across MCP server configs, using the shared helpers
+ * from `@a2a-wrapper/core` (which support both `${VAR}` and bare `$VAR`):
  *   - local  → `command` (array) and `environment` (string map)
  *   - remote → `headers` (string map)
  *
@@ -218,7 +193,7 @@ function substituteEnvTokensInMcp(config: Record<string, unknown>): void {
     if (srv.type === "local") {
       if (Array.isArray(srv.command)) {
         srv.command = (srv.command as string[]).map((arg) =>
-          typeof arg === "string" ? substituteEnvTokens(arg) : arg,
+          typeof arg === "string" ? substituteEnvTokensInString(arg) : arg,
         );
       }
       if (srv.environment && typeof srv.environment === "object") {
