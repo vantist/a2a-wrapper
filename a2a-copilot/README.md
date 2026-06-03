@@ -14,6 +14,7 @@ GitHub Copilot is a production-grade agent. It already handles multi-step planni
 **Features:**
 - Full [A2A v0.3.0](https://github.com/google-deepmind/a2a) protocol — Agent Card, JSON-RPC, REST, SSE streaming
 - Powered by GitHub Copilot (GPT-4.1, Claude Sonnet 4.5, and more)
+- **Bring Your Own Model (BYOK)** — point at Ollama, OpenAI, Anthropic, Azure, vLLM, or any OpenAI-compatible endpoint. See [Bring Your Own Model (BYOK)](#bring-your-own-model-byok).
 - MCP tool server support — HTTP and stdio transports
 - Multi-turn conversations via persistent Copilot sessions
 - JSON config file with layered overrides (JSON → env vars → CLI flags)
@@ -61,6 +62,8 @@ npx a2a-copilot --config agents/example/config.json
 ```
 
 > **⚠️ Authentication required:** You must set a `GITHUB_TOKEN` environment variable **or** run `gh auth login` before starting the server. Without valid GitHub credentials the server will fail with an auth error. You also need a GitHub account with Copilot access.
+>
+> **Using your own model?** If you configure a custom provider (BYOK) — e.g. a local Ollama instance — GitHub credentials are not required for that provider. See [Bring Your Own Model (BYOK)](#bring-your-own-model-byok).
 
 ## Architecture
 

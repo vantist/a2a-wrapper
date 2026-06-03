@@ -12,8 +12,17 @@ A monorepo of [A2A protocol](https://github.com/google-deepmind/a2a) wrappers th
 | Package | npm | Description |
 |---|---|---|
 | [`@a2a-wrapper/core`](packages/core/) | [![npm](https://img.shields.io/npm/v/@a2a-wrapper/core.svg)](https://www.npmjs.com/package/@a2a-wrapper/core) | Shared infrastructure — logging, config loading, event publishing, server factory, session management, CLI scaffold |
-| [`a2a-copilot`](a2a-copilot/) | [![npm](https://img.shields.io/npm/v/a2a-copilot.svg)](https://www.npmjs.com/package/a2a-copilot) | A2A wrapper for GitHub Copilot SDK |
-| [`a2a-opencode`](a2a-opencode/) | [![npm](https://img.shields.io/npm/v/a2a-opencode.svg)](https://www.npmjs.com/package/a2a-opencode) | A2A wrapper for OpenCode (Anthropic, OpenAI, GitHub Copilot, and more) |
+| [`a2a-copilot`](a2a-copilot/) | [![npm](https://img.shields.io/npm/v/a2a-copilot.svg)](https://www.npmjs.com/package/a2a-copilot) | A2A wrapper for GitHub Copilot SDK. Supports **Bring Your Own Model (BYOK)** — Ollama, OpenAI, Anthropic, Azure, vLLM, or any OpenAI-compatible endpoint |
+| [`a2a-opencode`](a2a-opencode/) | [![npm](https://img.shields.io/npm/v/a2a-opencode.svg)](https://www.npmjs.com/package/a2a-opencode) | A2A wrapper for OpenCode — multi-provider out of the box (Anthropic, OpenAI, GitHub Copilot, and more) |
+
+## Bring Your Own Model
+
+Both wrappers are provider-flexible — you are not locked into a single vendor:
+
+- **`a2a-opencode`** is multi-provider out of the box. OpenCode natively routes to Anthropic, OpenAI, GitHub Copilot, local models, and more — switch provider with one line in `config.json`.
+- **`a2a-copilot`** supports custom providers via GitHub Copilot's BYOK ("Bring Your Own Key") capability. Point it at a local Ollama instance, OpenAI, Anthropic, Azure OpenAI, Azure AI Foundry, vLLM, or any OpenAI-compatible endpoint using the `copilot.provider` config block. See the [a2a-copilot BYOK section](a2a-copilot/README.md#bring-your-own-model-byok) for setup and model requirements.
+
+> **Note on local models (a2a-copilot):** the agentic loop requires the model to support **native tool calling**. Some small/older local models emit tool calls as plain text and won't work. Use a tool-capable model (e.g. `qwen3.6`, `llama3.3`). Full details in the [BYOK section](a2a-copilot/README.md#bring-your-own-model-byok).
 
 ## Architecture
 
