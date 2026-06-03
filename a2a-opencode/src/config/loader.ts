@@ -165,8 +165,8 @@ export function resolveConfig(
     merged = deepMerge(merged, cliOverrides as unknown as Record<string, unknown>);
   }
 
-  // Layer 4: Substitute $ENV_VAR tokens in MCP local command arrays
-  substituteEnvTokensInMcpArgs(merged);
+  // Layer 4: Substitute env-var tokens in MCP command, environment, and headers
+  substituteEnvTokensInMcp(merged);
 
   return merged as unknown as Required<AgentConfig>;
 }
@@ -174,20 +174,60 @@ export function resolveConfig(
 // ─── Env Token Substitution ──────────────────────────────────────────────────
 
 /**
- * Replace $TOKEN references in MCP local server command arrays with matching
- * environment variable values.  Supports any $VAR_NAME token (e.g. $WORKSPACE_DIR).
- * Tokens with no matching env var are left unchanged.
+ * Replace env-var tokens in a single string. Supports two forms:
+ *   - `${VAR_NAME}` — explicit, recommended (works mid-string, e.g. "Bearer ${TOKEN}")
+ *   - `$VAR_NAME`   — bare, for backward compatibility (e.g. "$WORKSPACE_DIR")
+ *
+ * Tokens with no matching environment variable are left unchanged so that
+ * literal `$` usage and misconfigurations are visible rather than silently
+ * blanked out.
  */
-function substituteEnvTokensInMcpArgs(config: Record<string, unknown>): void {
+function substituteEnvTokens(value: string): string {
+  return value
+    .replace(/\$\{(\w+)\}/g, (match, name: string) => process.env[name] ?? match)
+    .replace(/\$(\w+)/g, (match, name: string) => process.env[name] ?? match);
+}
+
+/** Apply env-token substitution to every value of a string-map. */
+function substituteEnvTokensInRecord(
+  record: Record<string, string> | undefined,
+): Record<string, string> | undefined {
+  if (!record) return record;
+  const out: Record<string, string> = {};
+  for (const [key, val] of Object.entries(record)) {
+    out[key] = typeof val === "string" ? substituteEnvTokens(val) : val;
+  }
+  return out;
+}
+
+/**
+ * Replace env-var tokens across MCP server configs:
+ *   - local  → `command` (array) and `environment` (string map)
+ *   - remote → `headers` (string map)
+ *
+ * This keeps secrets (API keys, bearer tokens) out of config.json — operators
+ * reference `${MY_TOKEN}` and supply the value via the process environment.
+ */
+function substituteEnvTokensInMcp(config: Record<string, unknown>): void {
   const mcp = config.mcp as Record<string, unknown> | undefined;
   if (!mcp) return;
 
   for (const serverCfg of Object.values(mcp)) {
     const srv = serverCfg as Record<string, unknown>;
-    if (srv.type !== "local" || !Array.isArray(srv.command)) continue;
 
-    srv.command = (srv.command as string[]).map((arg) =>
-      arg.replace(/\$(\w+)/g, (_match, name: string) => process.env[name] ?? _match),
-    );
+    if (srv.type === "local") {
+      if (Array.isArray(srv.command)) {
+        srv.command = (srv.command as string[]).map((arg) =>
+          typeof arg === "string" ? substituteEnvTokens(arg) : arg,
+        );
+      }
+      if (srv.environment && typeof srv.environment === "object") {
+        srv.environment = substituteEnvTokensInRecord(srv.environment as Record<string, string>);
+      }
+    } else if (srv.type === "remote") {
+      if (srv.headers && typeof srv.headers === "object") {
+        srv.headers = substituteEnvTokensInRecord(srv.headers as Record<string, string>);
+      }
+    }
   }
 }
