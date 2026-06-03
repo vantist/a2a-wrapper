@@ -207,6 +207,10 @@ Create a `config.json` (see `agents/example/config.json` for the fully annotated
 | `ADVERTISE_HOST` | Hostname in agent card URLs | `localhost` |
 | `COPILOT_MODEL` | LLM model | `gpt-4.1` |
 | `COPILOT_CLI_URL` | External Copilot CLI URL | auto |
+| `COPILOT_PROVIDER_BASE_URL` | BYOK provider endpoint (e.g. `http://localhost:11434/v1`) | _(unset → GitHub Copilot)_ |
+| `COPILOT_PROVIDER_TYPE` | BYOK provider type: `openai`\|`azure`\|`anthropic` | `openai` |
+| `COPILOT_PROVIDER_API_KEY` | BYOK API key (omit for local Ollama) | _(unset)_ |
+| `COPILOT_PROVIDER_WIRE_API` | BYOK wire API: `completions`\|`responses` | `completions` |
 | `WORKSPACE_DIR` | Workspace directory | _(empty)_ |
 | `STREAM_ARTIFACTS` | Stream chunks in real time | `false` |
 | `LOG_LEVEL` | `debug`\|`info`\|`warn`\|`error` | `info` |
@@ -214,6 +218,70 @@ Create a `config.json` (see `agents/example/config.json` for the fully annotated
 | `AGENT_DESCRIPTION` | Override agent card description | _(from config)_ |
 
 See [`.env.example`](.env.example) for the full reference.
+
+## Bring Your Own Model (BYOK)
+
+By default the wrapper uses GitHub Copilot's hosted models. You can instead point it at **any OpenAI-compatible endpoint** — Ollama, OpenAI, Anthropic, Azure OpenAI, Azure AI Foundry, vLLM, LiteLLM, or Microsoft Foundry Local — using the `copilot.provider` config block. This is GitHub Copilot's BYOK ("Bring Your Own Key") capability, surfaced through the wrapper.
+
+When `provider` is omitted, nothing changes: the wrapper uses GitHub Copilot exactly as before. When `provider` is set, sessions bypass GitHub Copilot and call your endpoint directly.
+
+### Configuration
+
+```json
+{
+  "copilot": {
+    "model": "qwen3.6",
+    "provider": {
+      "type": "openai",
+      "baseUrl": "http://localhost:11434/v1",
+      "wireApi": "completions"
+    }
+  }
+}
+```
+
+> **The `model` field is required when `provider` is set.** The runtime cannot auto-detect models from custom providers.
+
+### Provider fields
+
+| Field | Values | Notes |
+|---|---|---|
+| `type` | `openai` \| `azure` \| `anthropic` | Defaults to `openai`. Use `openai` for Ollama, vLLM, LiteLLM, Foundry. |
+| `baseUrl` | string (required) | API endpoint. For Ollama: `http://localhost:11434/v1`. |
+| `apiKey` | string | Optional. Not needed for local Ollama. |
+| `bearerToken` | string | Sets the `Authorization` header directly. Takes precedence over `apiKey`. |
+| `wireApi` | `completions` \| `responses` | Defaults to `completions`. See note below. |
+| `azure.apiVersion` | string | Azure only. Defaults to `2024-10-21`. |
+
+### Provider quick reference
+
+| Provider | `type` | `baseUrl` | `wireApi` |
+|---|---|---|---|
+| Ollama (local) | `openai` | `http://localhost:11434/v1` | `completions` |
+| OpenAI | `openai` | `https://api.openai.com/v1` | `responses` |
+| Anthropic | `anthropic` | `https://api.anthropic.com` | _(n/a)_ |
+| Azure OpenAI | `azure` | `https://<resource>.openai.azure.com` | `completions` |
+| Azure AI Foundry | `openai` | `https://<resource>.openai.azure.com/openai/v1/` | `responses` |
+| vLLM / LiteLLM | `openai` | `http://<host>:<port>/v1` | `completions` |
+
+You can also configure everything with environment variables (the same vars the `gh copilot` CLI uses): `COPILOT_PROVIDER_BASE_URL`, `COPILOT_PROVIDER_TYPE`, `COPILOT_PROVIDER_API_KEY`, `COPILOT_PROVIDER_WIRE_API`, and `COPILOT_MODEL`.
+
+### ⚠️ Model requirements (read this before using local models)
+
+The wrapper drives an **agentic loop** through the Copilot runtime. That loop depends on the model supporting **native tool calling (function calling)** and **streaming**. Not every local model does, and a model that chats fine in isolation can still fail here.
+
+Symptoms of an incompatible model:
+
+- **Raw tool-call JSON as the response.** You ask "Who are you?" and get back `{"name":"view","arguments":{...}}` instead of an answer. This happens when the model emits tool calls as plain text instead of using the structured tool-call protocol — the runtime can't execute them, so the text leaks through as the final artifact. The wrapper detects this shape and replaces it with an actionable message, but the underlying cause is the model.
+- **`400 ... does not support thinking`.** Seen with `wireApi: "responses"` against models that don't implement the reasoning parameter. Use `wireApi: "completions"` for local models.
+
+Guidance:
+
+- **Use a model with robust native tool-calling support.** Verified working locally: **`qwen3.6`**. Other strong options: `llama3.3`, `mistral-nemo`. Avoid small/older coder models like `qwen2.5-coder:7b` for agentic use — they tend to emit tool calls as text.
+- **Prefer `wireApi: "completions"`** for Ollama and most local engines. Reserve `"responses"` for OpenAI GPT-4+ and Azure AI Foundry GPT-5-series.
+- The model must support **streaming** (all the recommended models do).
+
+See the [`agents/ollama/`](agents/ollama/) example for a working local setup.
 
 ## Bundled Agent Examples
 
@@ -235,6 +303,18 @@ Runs on port `3000`. No external tools. Good starting point for custom agents.
 ```
 
 Runs on port `3000` and connects to the `@modelcontextprotocol/server-filesystem` MCP server. The agent can read, write, and search files inside its `workspace/` directory.
+
+### Ollama Agent (local / BYOK)
+
+```bash
+# Pull a tool-capable model and start Ollama first
+ollama pull qwen3.6
+ollama serve
+
+./agents/ollama/start.sh start
+```
+
+Runs on port `3002` entirely against a local Ollama instance — no GitHub Copilot account required. See the [Bring Your Own Model (BYOK)](#bring-your-own-model-byok) section for model requirements (the model must support native tool calling).
 
 ### Creating Your Own Agent
 

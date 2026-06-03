@@ -40,6 +40,35 @@ import { logger } from "../utils/logger.js";
 
 const log = logger.child("executor");
 
+/**
+ * Heuristic: detect when an assistant "response" is actually a tool call
+ * serialized as plain text. Models without proper native function-calling
+ * support (common with small/local Ollama models) print tool calls into the
+ * text channel as JSON like `{"name":"view","arguments":{...}}` instead of
+ * using the structured tool-call protocol the CLI expects.
+ *
+ * Returns true only for a JSON object that has a string `name` plus an
+ * `arguments`/`parameters` object — the canonical OpenAI tool-call shape —
+ * so ordinary JSON answers from the model are not misclassified.
+ */
+function looksLikeRawToolCall(text: string): boolean {
+  const trimmed = text.trim();
+  if (!trimmed.startsWith("{") || !trimmed.endsWith("}")) return false;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(trimmed);
+  } catch {
+    return false;
+  }
+  if (typeof parsed !== "object" || parsed === null) return false;
+  const obj = parsed as Record<string, unknown>;
+  const hasName = typeof obj.name === "string";
+  const hasArgs =
+    (typeof obj.arguments === "object" && obj.arguments !== null) ||
+    (typeof obj.parameters === "object" && obj.parameters !== null);
+  return hasName && hasArgs;
+}
+
 export class CopilotExecutor implements AgentExecutor {
   private readonly config: Required<AgentConfig>;
   private client: CopilotClient | null = null;
@@ -495,6 +524,25 @@ export class CopilotExecutor implements AgentExecutor {
         accumulatedText = timedOut
           ? "The request timed out before a response was produced."
           : "No text response was returned.";
+      }
+
+      // BYOK guard: some local models (via Ollama / vLLM, etc.) do not properly
+      // support the native function-calling protocol the Copilot CLI relies on.
+      // Instead of emitting a structured tool call, they print the tool call as
+      // plain text (e.g. `{"name":"view","arguments":{...}}`) and stop. Detect
+      // that shape and replace it with an actionable message rather than leaking
+      // raw tool-call JSON to the caller.
+      if (this.config.copilot.provider && looksLikeRawToolCall(accumulatedText)) {
+        log.warn("Model emitted a tool call as plain text — likely a model that lacks native tool-calling support", {
+          taskId,
+          model: this.config.copilot.model,
+          preview: accumulatedText.slice(0, 120),
+        });
+        accumulatedText =
+          "The configured model returned a tool call as plain text instead of a usable " +
+          "response. This usually means the model does not fully support the native " +
+          "function-calling (tool) protocol required by the agent runtime. Try a model " +
+          "with robust tool-calling support (e.g. qwen3.6, llama3.3, mistral-nemo).";
       }
 
       // 6. Finalize
