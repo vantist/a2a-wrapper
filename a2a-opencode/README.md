@@ -300,6 +300,28 @@ $EDITOR agents/my-agent/config.json
 }
 ```
 
+### Authenticated remote servers (custom headers)
+
+Many hosted MCP servers (Linear, Notion, remote GitHub MCP, etc.) require auth headers. Add a `headers` map to any `remote` server. Header values support `${ENV_VAR}` substitution so **secrets never live in `config.json`** — reference an environment variable and supply the value at runtime:
+
+```json
+"mcp": {
+  "linear": {
+    "type": "remote",
+    "url": "https://mcp.linear.app/sse",
+    "headers": {
+      "Authorization": "Bearer ${LINEAR_API_KEY}"
+    }
+  }
+}
+```
+
+```bash
+LINEAR_API_KEY=lin_xxx ./agents/my-agent/start.sh start
+```
+
+Unresolved tokens (no matching env var) are left as-is so misconfigurations stay visible. The same `${VAR}` / `$VAR` substitution applies to a local server's `command` array and `environment` map — keep tokens out of committed config and inject them via the environment.
+
 ### Remote server with OAuth
 
 ```json
@@ -315,6 +337,8 @@ $EDITOR agents/my-agent/config.json
   }
 }
 ```
+
+For static auth where you control the token, prefer `headers` with `${ENV_VAR}` substitution. Use `oauth` when the server requires an OAuth2 authorization flow.
 
 ## Memory Persistence
 

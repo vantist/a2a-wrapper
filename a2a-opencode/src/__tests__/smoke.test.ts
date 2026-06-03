@@ -4,7 +4,7 @@
  * Cover the pure, dependency-free modules so CI always has something
  * to run. Expand these as the project grows.
  */
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -105,6 +105,99 @@ describe("loadConfigFile", () => {
     writeFileSync(tmp, "{ not valid json }");
     try {
       expect(() => loadConfigFile(tmp)).toThrow();
+    } finally {
+      rmSync(tmp, { force: true });
+    }
+  });
+});
+
+// ─── resolveConfig — MCP env-token substitution ─────────────────────────────
+
+import { resolveConfig } from "../config/loader.js";
+
+describe("resolveConfig — MCP env-token substitution", () => {
+  const OLD_ENV = process.env;
+
+  beforeEach(() => {
+    process.env = { ...OLD_ENV };
+  });
+
+  afterEach(() => {
+    process.env = OLD_ENV;
+  });
+
+  function writeMcpConfig(mcp: Record<string, unknown>): string {
+    const tmp = join(tmpdir(), `a2a-opencode-mcp-tokens-${Date.now()}-${Math.random().toString(36).slice(2)}.json`);
+    writeFileSync(tmp, JSON.stringify({ agentCard: { name: "Test" }, mcp }));
+    return tmp;
+  }
+
+  it("substitutes ${VAR} in remote headers", () => {
+    process.env["LINEAR_API_KEY"] = "secret-123";
+    const tmp = writeMcpConfig({
+      linear: {
+        type: "remote",
+        url: "https://mcp.linear.app/sse",
+        headers: { Authorization: "Bearer ${LINEAR_API_KEY}" },
+      },
+    });
+    try {
+      const cfg = resolveConfig(tmp);
+      const srv = cfg.mcp!.linear as { headers?: Record<string, string> };
+      expect(srv.headers?.Authorization).toBe("Bearer secret-123");
+    } finally {
+      rmSync(tmp, { force: true });
+    }
+  });
+
+  it("substitutes ${VAR} in local environment values", () => {
+    process.env["GH_PAT"] = "ghp_xxx";
+    const tmp = writeMcpConfig({
+      github: {
+        type: "local",
+        command: ["npx", "-y", "@some/mcp-server"],
+        environment: { GITHUB_TOKEN: "${GH_PAT}" },
+      },
+    });
+    try {
+      const cfg = resolveConfig(tmp);
+      const srv = cfg.mcp!.github as { environment?: Record<string, string> };
+      expect(srv.environment?.GITHUB_TOKEN).toBe("ghp_xxx");
+    } finally {
+      rmSync(tmp, { force: true });
+    }
+  });
+
+  it("substitutes bare $VAR in local command (backward compatible)", () => {
+    process.env["WORKSPACE_DIR"] = "/tmp/ws";
+    const tmp = writeMcpConfig({
+      fs: {
+        type: "local",
+        command: ["npx", "-y", "@modelcontextprotocol/server-filesystem", "$WORKSPACE_DIR"],
+      },
+    });
+    try {
+      const cfg = resolveConfig(tmp);
+      const srv = cfg.mcp!.fs as { command?: string[] };
+      expect(srv.command?.[3]).toBe("/tmp/ws");
+    } finally {
+      rmSync(tmp, { force: true });
+    }
+  });
+
+  it("leaves unresolved tokens unchanged", () => {
+    delete process.env["DOES_NOT_EXIST"];
+    const tmp = writeMcpConfig({
+      svc: {
+        type: "remote",
+        url: "https://example.com/sse",
+        headers: { Authorization: "Bearer ${DOES_NOT_EXIST}" },
+      },
+    });
+    try {
+      const cfg = resolveConfig(tmp);
+      const srv = cfg.mcp!.svc as { headers?: Record<string, string> };
+      expect(srv.headers?.Authorization).toBe("Bearer ${DOES_NOT_EXIST}");
     } finally {
       rmSync(tmp, { force: true });
     }

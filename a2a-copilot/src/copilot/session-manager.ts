@@ -35,11 +35,17 @@ export interface CopilotSession {
   /**
    * Blocking send: dispatches the prompt and resolves with the complete
    * assistant response. Suitable for non-streaming, single-turn interactions.
+   *
+   * SDK 1.0.0: returns AssistantMessageEvent | undefined (was { data?: { content? } })
    */
-  sendAndWait(params: { prompt: string }, timeoutMs?: number): Promise<{ data?: { content?: string } }>;
+  sendAndWait(params: { prompt: string }, timeoutMs?: number): Promise<{ data?: { content?: string } } | undefined>;
   /**
-   * Destroy this session and release all SDK-side resources.
-   * Always call before discarding a session to avoid resource leaks.
+   * Disconnect this session and release all SDK-side resources.
+   * Session data on disk is preserved for later resumption.
+   */
+  disconnect(): Promise<void>;
+  /**
+   * @deprecated Use disconnect() instead.
    */
   destroy(): Promise<void>;
 }
@@ -96,9 +102,19 @@ export class SessionManager {
         if ("enabled" in cfg && cfg.enabled === false) continue;
 
         if (cfg.type === "http") {
-          mcpServers[name] = { type: "http", url: cfg.url, tools: ["*"] };
+          mcpServers[name] = {
+            type: "http",
+            url: cfg.url,
+            tools: ["*"],
+            ...(cfg.headers ? { headers: cfg.headers } : {}),
+          };
         } else if (cfg.type === "sse") {
-          mcpServers[name] = { type: "sse", url: cfg.url, tools: ["*"] };
+          mcpServers[name] = {
+            type: "sse",
+            url: cfg.url,
+            tools: ["*"],
+            ...(cfg.headers ? { headers: cfg.headers } : {}),
+          };
         } else if (cfg.type === "stdio") {
           mcpServers[name] = {
             type: "stdio",
@@ -152,6 +168,22 @@ export class SessionManager {
     // MCP evidence hooks — capture tool args and results as events
     if (this.mcpHooks) {
       opts.hooks = this.mcpHooks.getHooks();
+    }
+
+    // Custom LLM provider (BYOK — Bring Your Own Key).
+    // Passes directly to the SDK's session.create RPC as the `provider` field.
+    // When absent, the SDK uses the default GitHub Copilot API.
+    if (copilotCfg.provider) {
+      const p = copilotCfg.provider;
+      const providerOpt: Record<string, unknown> = {
+        baseUrl: p.baseUrl,
+      };
+      if (p.type) providerOpt.type = p.type;
+      if (p.apiKey) providerOpt.apiKey = p.apiKey;
+      if (p.bearerToken) providerOpt.bearerToken = p.bearerToken;
+      if (p.wireApi) providerOpt.wireApi = p.wireApi;
+      if (p.azure) providerOpt.azure = p.azure;
+      opts.provider = providerOpt;
     }
 
     // Custom agents
@@ -253,9 +285,9 @@ export class SessionManager {
     const entry = this.contextSessions.get(contextId);
     if (!entry) return;
     try {
-      await (entry.session as any).destroy();
+      await entry.session.disconnect();
     } catch (e) {
-      log.warn("Session destroy failed", { sessionId: entry.sessionId, error: (e as Error).message });
+      log.warn("Session disconnect failed", { sessionId: entry.sessionId, error: (e as Error).message });
     }
     this.contextSessions.delete(contextId);
   }
@@ -271,7 +303,7 @@ export class SessionManager {
       for (const [contextId, entry] of this.contextSessions.entries()) {
         if (now - entry.lastUsed > ttl) {
           log.info("Cleaning up expired session", { contextId, sessionId: entry.sessionId });
-          (entry.session as any).destroy().catch(() => {});
+          entry.session.disconnect().catch(() => {});
           this.contextSessions.delete(contextId);
         }
       }
@@ -286,7 +318,7 @@ export class SessionManager {
     }
     for (const [contextId, entry] of this.contextSessions.entries()) {
       try {
-        await (entry.session as any).destroy();
+        await entry.session.disconnect();
       } catch { /* best effort */ }
       this.contextSessions.delete(contextId);
     }

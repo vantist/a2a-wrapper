@@ -216,7 +216,7 @@
       "description": "Configuration for a local (stdio) MCP server.",
       "properties": {
         "command": {
-          "description": "Command and arguments to launch the server",
+          "description": "Command and arguments to launch the server. Values support `${ENV_VAR}` (or `$ENV_VAR`) substitution.",
           "items": {
             "type": "string"
           },
@@ -230,7 +230,7 @@
           "additionalProperties": {
             "type": "string"
           },
-          "description": "Environment variables passed to the spawned process",
+          "description": "Environment variables passed to the spawned process. Values support `${ENV_VAR}` (or `$ENV_VAR`) substitution so secrets stay out of config.json — e.g. `{ \"API_KEY\": \"${MY_API_KEY}\" }`.",
           "type": "object"
         },
         "timeout": {
@@ -279,7 +279,7 @@
           "additionalProperties": {
             "type": "string"
           },
-          "description": "Extra headers sent with every request (e.g. { \"Authorization\": \"Bearer <token>\" })",
+          "description": "Extra headers sent with every request (e.g. { \"Authorization\": \"Bearer <token>\" }). Values support `${ENV_VAR}` (or `$ENV_VAR`) substitution so secrets stay out of config.json — e.g. `{ \"Authorization\": \"Bearer ${LINEAR_API_KEY}\" }`.",
           "type": "object"
         },
         "oauth": {

@@ -223,3 +223,68 @@ describe("Property 9: Environment token substitution", () => {
     );
   });
 });
+
+// ─── Token form + record substitution (example-based) ───────────────────────
+
+import {
+  substituteEnvTokensInString,
+  substituteEnvTokensInRecord,
+} from "../../utils/deep-merge.js";
+
+describe("substituteEnvTokensInString", () => {
+  const toClean: string[] = [];
+  afterEach(() => {
+    for (const v of toClean) delete process.env[v];
+    toClean.length = 0;
+  });
+
+  it("substitutes the explicit ${VAR} form mid-string", () => {
+    process.env["TOKEN"] = "abc123";
+    toClean.push("TOKEN");
+    expect(substituteEnvTokensInString("Bearer ${TOKEN}")).toBe("Bearer abc123");
+  });
+
+  it("substitutes the bare $VAR form", () => {
+    process.env["HOME_DIR"] = "/home/user";
+    toClean.push("HOME_DIR");
+    expect(substituteEnvTokensInString("$HOME_DIR/projects")).toBe("/home/user/projects");
+  });
+
+  it("leaves unresolved tokens unchanged (both forms)", () => {
+    delete process.env["MISSING"];
+    expect(substituteEnvTokensInString("${MISSING}")).toBe("${MISSING}");
+    expect(substituteEnvTokensInString("$MISSING")).toBe("$MISSING");
+  });
+});
+
+describe("substituteEnvTokensInRecord", () => {
+  const toClean: string[] = [];
+  afterEach(() => {
+    for (const v of toClean) delete process.env[v];
+    toClean.length = 0;
+  });
+
+  it("substitutes tokens in every value", () => {
+    process.env["LINEAR_API_KEY"] = "lin_xxx";
+    process.env["X_KEY"] = "kkk";
+    toClean.push("LINEAR_API_KEY", "X_KEY");
+    const out = substituteEnvTokensInRecord({
+      Authorization: "Bearer ${LINEAR_API_KEY}",
+      "X-Api-Key": "$X_KEY",
+    });
+    expect(out).toEqual({ Authorization: "Bearer lin_xxx", "X-Api-Key": "kkk" });
+  });
+
+  it("returns undefined for undefined input", () => {
+    expect(substituteEnvTokensInRecord(undefined)).toBeUndefined();
+  });
+
+  it("does not mutate the input object", () => {
+    process.env["V"] = "resolved";
+    toClean.push("V");
+    const input = { a: "${V}" };
+    const out = substituteEnvTokensInRecord(input);
+    expect(input.a).toBe("${V}");
+    expect(out?.a).toBe("resolved");
+  });
+});

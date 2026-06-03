@@ -8,7 +8,7 @@
 
 import type { Message as A2AMessage } from "@a2a-js/sdk";
 import type { AgentExecutor, RequestContext, ExecutionEventBus } from "@a2a-js/sdk/server";
-import { CopilotClient, approveAll } from "@github/copilot-sdk";
+import { CopilotClient, approveAll, RuntimeConnection } from "@github/copilot-sdk";
 import { v4 as uuidv4 } from "uuid";
 import { readFile as fsReadFile } from "node:fs/promises";
 import { join } from "node:path";
@@ -39,6 +39,35 @@ import { createDeferred } from "../utils/deferred.js";
 import { logger } from "../utils/logger.js";
 
 const log = logger.child("executor");
+
+/**
+ * Heuristic: detect when an assistant "response" is actually a tool call
+ * serialized as plain text. Models without proper native function-calling
+ * support (common with small/local Ollama models) print tool calls into the
+ * text channel as JSON like `{"name":"view","arguments":{...}}` instead of
+ * using the structured tool-call protocol the CLI expects.
+ *
+ * Returns true only for a JSON object that has a string `name` plus an
+ * `arguments`/`parameters` object — the canonical OpenAI tool-call shape —
+ * so ordinary JSON answers from the model are not misclassified.
+ */
+function looksLikeRawToolCall(text: string): boolean {
+  const trimmed = text.trim();
+  if (!trimmed.startsWith("{") || !trimmed.endsWith("}")) return false;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(trimmed);
+  } catch {
+    return false;
+  }
+  if (typeof parsed !== "object" || parsed === null) return false;
+  const obj = parsed as Record<string, unknown>;
+  const hasName = typeof obj.name === "string";
+  const hasArgs =
+    (typeof obj.arguments === "object" && obj.arguments !== null) ||
+    (typeof obj.parameters === "object" && obj.parameters !== null);
+  return hasName && hasArgs;
+}
 
 export class CopilotExecutor implements AgentExecutor {
   private readonly config: Required<AgentConfig>;
@@ -88,30 +117,35 @@ export class CopilotExecutor implements AgentExecutor {
       };
     }
 
-    // Create Copilot client
+    // Create Copilot client — SDK 1.0.0 uses RuntimeConnection factories
+    // instead of the flat options object from 0.2.x.
     const clientOpts: Record<string, unknown> = {};
+
     if (this.config.copilot.cliUrl) {
-      clientOpts.cliUrl = this.config.copilot.cliUrl;
-    }
-    // GitHub PAT for auth (required in Docker where `gh` CLI is unavailable)
-    if (this.config.copilot.githubToken) {
-      clientOpts.githubToken = this.config.copilot.githubToken;
-    }
-    // Start the CLI process in the workspace directory so file tools resolve correctly
-    if (this.config.copilot.workspaceDirectory) {
-      clientOpts.cwd = this.config.copilot.workspaceDirectory;
+      // Connect to a pre-running CLI server (Docker, CI, remote)
+      clientOpts.connection = RuntimeConnection.forUri(this.config.copilot.cliUrl);
+    } else {
+      // Spawn the CLI binary managed by this process (default path)
+      // workingDirectory sets the cwd for the spawned binary.
+      if (this.config.copilot.workspaceDirectory) {
+        clientOpts.workingDirectory = this.config.copilot.workspaceDirectory;
+      }
+      // GitHub PAT for auth (required in Docker where `gh` CLI is unavailable)
+      if (this.config.copilot.githubToken) {
+        clientOpts.gitHubToken = this.config.copilot.githubToken;
+      }
     }
 
     this.client = new CopilotClient(clientOpts as any);
     try {
-      await (this.client as any).start();
+      await this.client.start();
     } catch (err) {
       const msg = (err as Error).message ?? String(err);
-      const isNotFound = msg.includes("ENOENT") || msg.includes("not found") || msg.includes("spawn");
-      const isAuth = msg.toLowerCase().includes("auth") || msg.toLowerCase().includes("login") || msg.toLowerCase().includes("token") || msg.toLowerCase().includes("unauthorized") || msg.includes("onPermissionRequest handler");
+      const isNotFound = msg.includes("ENOENT") || msg.includes("not found") || msg.includes("spawn") || msg.includes("CLI not found");
+      const isAuth = msg.toLowerCase().includes("auth") || msg.toLowerCase().includes("login") || msg.toLowerCase().includes("token") || msg.toLowerCase().includes("unauthorized");
       if (isNotFound) {
         throw new Error(
-          "GitHub Copilot CLI not found. Install it with: gh extension install github/gh-copilot\n" +
+          "GitHub Copilot CLI not found. Ensure @github/copilot is installed.\n" +
           "Then authenticate with: gh auth login"
         );
       }
@@ -144,7 +178,7 @@ export class CopilotExecutor implements AgentExecutor {
       this.sessionManager = null;
     }
     if (this.client) {
-      await (this.client as any).stop();
+      await this.client.stop();
       this.client = null;
     }
     this.initialized = false;
@@ -178,9 +212,19 @@ export class CopilotExecutor implements AgentExecutor {
       for (const [name, serverCfg] of Object.entries(mcpCfg)) {
         if ("enabled" in serverCfg && serverCfg.enabled === false) continue;
         if (serverCfg.type === "http") {
-          mcpServers[name] = { type: "http", url: serverCfg.url, tools: ["*"] };
+          mcpServers[name] = {
+            type: "http",
+            url: serverCfg.url,
+            tools: ["*"],
+            ...(serverCfg.headers ? { headers: serverCfg.headers } : {}),
+          };
         } else if (serverCfg.type === "sse") {
-          mcpServers[name] = { type: "sse", url: serverCfg.url, tools: ["*"] };
+          mcpServers[name] = {
+            type: "sse",
+            url: serverCfg.url,
+            tools: ["*"],
+            ...(serverCfg.headers ? { headers: serverCfg.headers } : {}),
+          };
         } else if (serverCfg.type === "stdio") {
           mcpServers[name] = {
             type: "stdio",
@@ -199,6 +243,19 @@ export class CopilotExecutor implements AgentExecutor {
     // Auto-approve MCP tool permissions for headless context building
     opts.onPermissionRequest = approveAll;
 
+    // Custom LLM provider (BYOK) — must be forwarded here too since buildContext
+    // creates its own session directly rather than going through SessionManager.
+    if (this.config.copilot.provider) {
+      const p = this.config.copilot.provider;
+      const providerOpt: Record<string, unknown> = { baseUrl: p.baseUrl };
+      if (p.type) providerOpt.type = p.type;
+      if (p.apiKey) providerOpt.apiKey = p.apiKey;
+      if (p.bearerToken) providerOpt.bearerToken = p.bearerToken;
+      if (p.wireApi) providerOpt.wireApi = p.wireApi;
+      if (p.azure) providerOpt.azure = p.azure;
+      opts.provider = providerOpt;
+    }
+
     const session = await (this.client as any).createSession(opts);
     const sessionId = session.sessionId ?? "context-build";
 
@@ -207,9 +264,10 @@ export class CopilotExecutor implements AgentExecutor {
     const fullPrompt = contextPrompt;
 
     const response = await session.sendAndWait({ prompt: fullPrompt });
-    const responseText = response?.data?.content ?? "";
+    // SDK 1.0.0: sendAndWait returns AssistantMessageEvent | undefined
+    const responseText = (response as any)?.data?.content ?? "";
 
-    await session.destroy();
+    await session.disconnect();
 
     log.info("Context build complete", { sessionId, responseLen: responseText.length });
     return responseText;
@@ -463,6 +521,7 @@ export class CopilotExecutor implements AgentExecutor {
             copilotSession.sendAndWait({ prompt: promptText }, timeoutMs),
             timeout,
           ]);
+          // SDK 1.0.0: sendAndWait returns AssistantMessageEvent | undefined
           accumulatedText = (response as any)?.data?.content ?? "";
         } catch (e) {
           if (!(e as Error).message.includes("timeout")) throw e;
@@ -475,6 +534,25 @@ export class CopilotExecutor implements AgentExecutor {
         accumulatedText = timedOut
           ? "The request timed out before a response was produced."
           : "No text response was returned.";
+      }
+
+      // BYOK guard: some local models (via Ollama / vLLM, etc.) do not properly
+      // support the native function-calling protocol the Copilot CLI relies on.
+      // Instead of emitting a structured tool call, they print the tool call as
+      // plain text (e.g. `{"name":"view","arguments":{...}}`) and stop. Detect
+      // that shape and replace it with an actionable message rather than leaking
+      // raw tool-call JSON to the caller.
+      if (this.config.copilot.provider && looksLikeRawToolCall(accumulatedText)) {
+        log.warn("Model emitted a tool call as plain text — likely a model that lacks native tool-calling support", {
+          taskId,
+          model: this.config.copilot.model,
+          preview: accumulatedText.slice(0, 120),
+        });
+        accumulatedText =
+          "The configured model returned a tool call as plain text instead of a usable " +
+          "response. This usually means the model does not fully support the native " +
+          "function-calling (tool) protocol required by the agent runtime. Try a model " +
+          "with robust tool-calling support (e.g. qwen3.6, llama3.3, mistral-nemo).";
       }
 
       // 6. Finalize

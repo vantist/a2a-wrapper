@@ -11,6 +11,7 @@
 
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
+import { substituteEnvTokensInString, substituteEnvTokensInRecord } from "@a2a-wrapper/core";
 import { DEFAULTS } from "./defaults.js";
 import type { AgentConfig, McpServerConfig } from "./types.js";
 
@@ -87,12 +88,27 @@ export function loadEnvOverrides(): Partial<AgentConfig> {
   const model = process.env["COPILOT_MODEL"];
   const workspaceDir = process.env["WORKSPACE_DIR"];
   const githubToken = process.env["GITHUB_TOKEN"];
-  if (cliUrl || model || workspaceDir || githubToken) {
+  // BYOK / custom provider — mirrors the gh-copilot CLI env vars so the same
+  // shell exports work for both the CLI and this SDK-based wrapper.
+  const providerBaseUrl = process.env["COPILOT_PROVIDER_BASE_URL"];
+  const providerType = process.env["COPILOT_PROVIDER_TYPE"] as "openai" | "azure" | "anthropic" | undefined;
+  const providerApiKey = process.env["COPILOT_PROVIDER_API_KEY"];
+  const providerWireApi = process.env["COPILOT_PROVIDER_WIRE_API"] as "completions" | "responses" | undefined;
+
+  if (cliUrl || model || workspaceDir || githubToken || providerBaseUrl) {
     cfg.copilot = {};
     if (cliUrl) cfg.copilot.cliUrl = cliUrl;
     if (model) cfg.copilot.model = model;
     if (workspaceDir) cfg.copilot.workspaceDirectory = workspaceDir;
     if (githubToken) cfg.copilot.githubToken = githubToken;
+
+    // Build provider config from env vars (only if at least baseUrl is set)
+    if (providerBaseUrl) {
+      cfg.copilot.provider = { baseUrl: providerBaseUrl };
+      if (providerType) cfg.copilot.provider.type = providerType;
+      if (providerApiKey) cfg.copilot.provider.apiKey = providerApiKey;
+      if (providerWireApi) cfg.copilot.provider.wireApi = providerWireApi;
+    }
   }
 
   // Features
@@ -160,8 +176,8 @@ export function resolveConfig(
     merged = deepMerge(merged, cliOverrides as unknown as Record<string, unknown>);
   }
 
-  // Layer 4: Substitute $ENV_VAR tokens in MCP stdio args
-  substituteEnvTokensInMcpArgs(merged);
+  // Layer 4: Substitute env-var tokens in MCP args, env, and headers
+  substituteEnvTokensInMcp(merged);
 
   return merged as unknown as Required<AgentConfig>;
 }
@@ -169,20 +185,35 @@ export function resolveConfig(
 // ─── Env Token Substitution ─────────────────────────────────────────────────
 
 /**
- * Replace $TOKEN references in MCP stdio args with matching environment
- * variable values.  Supports any $VAR_NAME token (e.g. $WORKSPACE_DIR).
- * Tokens with no matching env var are left unchanged.
+ * Replace env-var tokens across MCP server configs, using the shared helpers
+ * from `@a2a-wrapper/core` (which support both `${VAR}` and bare `$VAR`):
+ *   - stdio  → `args` (array) and `env` (string map)
+ *   - http   → `headers` (string map)
+ *   - sse    → `headers` (string map)
+ *
+ * This keeps secrets (API keys, bearer tokens) out of config.json — operators
+ * reference `${MY_TOKEN}` and supply the value via the process environment.
  */
-function substituteEnvTokensInMcpArgs(config: Record<string, unknown>): void {
+function substituteEnvTokensInMcp(config: Record<string, unknown>): void {
   const mcp = config.mcp as Record<string, unknown> | undefined;
   if (!mcp) return;
 
   for (const serverCfg of Object.values(mcp)) {
     const srv = serverCfg as Record<string, unknown>;
-    if (srv.type !== "stdio" || !Array.isArray(srv.args)) continue;
 
-    srv.args = (srv.args as string[]).map((arg) =>
-      arg.replace(/\$(\w+)/g, (_match, name: string) => process.env[name] ?? _match),
-    );
+    if (srv.type === "stdio") {
+      if (Array.isArray(srv.args)) {
+        srv.args = (srv.args as string[]).map((arg) =>
+          typeof arg === "string" ? substituteEnvTokensInString(arg) : arg,
+        );
+      }
+      if (srv.env && typeof srv.env === "object") {
+        srv.env = substituteEnvTokensInRecord(srv.env as Record<string, string>);
+      }
+    } else if (srv.type === "http" || srv.type === "sse") {
+      if (srv.headers && typeof srv.headers === "object") {
+        srv.headers = substituteEnvTokensInRecord(srv.headers as Record<string, string>);
+      }
+    }
   }
 }

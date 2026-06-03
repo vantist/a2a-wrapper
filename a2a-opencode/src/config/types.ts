@@ -171,9 +171,16 @@ export interface LoggingConfig {
 /** Configuration for a local (stdio) MCP server. */
 export interface McpLocalServerConfig {
   type: "local";
-  /** Command and arguments to launch the server */
+  /**
+   * Command and arguments to launch the server.
+   * Values support `${ENV_VAR}` (or `$ENV_VAR`) substitution.
+   */
   command: string[];
-  /** Environment variables passed to the spawned process */
+  /**
+   * Environment variables passed to the spawned process.
+   * Values support `${ENV_VAR}` (or `$ENV_VAR`) substitution so secrets stay
+   * out of config.json — e.g. `{ "API_KEY": "${MY_API_KEY}" }`.
+   */
   environment?: Record<string, string>;
   /** Enable on startup (default: true) */
   enabled?: boolean;
@@ -198,7 +205,11 @@ export interface McpRemoteServerConfig {
   url: string;
   /** Enable on startup (default: true) */
   enabled?: boolean;
-  /** Extra headers sent with every request (e.g. { "Authorization": "Bearer <token>" }) */
+  /**
+   * Extra headers sent with every request (e.g. { "Authorization": "Bearer <token>" }).
+   * Values support `${ENV_VAR}` (or `$ENV_VAR`) substitution so secrets stay out
+   * of config.json — e.g. `{ "Authorization": "Bearer ${LINEAR_API_KEY}" }`.
+   */
   headers?: Record<string, string>;
   /** OAuth authentication config. Set to false to disable OAuth auto-detection. */
   oauth?: McpOAuthServerConfig | false;
