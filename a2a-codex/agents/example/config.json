@@ -1,0 +1,66 @@
+{
+  "$comment": [
+    "Codex-backed A2A workspace engineering agent.",
+    "Required environment variables:",
+    "  OPENAI_API_KEY  — your OpenAI API key",
+    "  WORKSPACE_DIR   — absolute path to a Git repository",
+    "Optional:",
+    "  CODEX_MODEL     — override the model (e.g. o4-mini, gpt-4o)",
+    "Do not store credentials in this file."
+  ],
+  "agentCard": {
+    "name": "Codex Workspace Engineer",
+    "description": "A repository-scoped software engineering agent backed by OpenAI Codex.",
+    "version": "1.0.0",
+    "protocolVersion": "0.3.0",
+    "streaming": true,
+    "defaultInputModes": ["text"],
+    "defaultOutputModes": ["text"],
+    "skills": [
+      {
+        "id": "workspace-engineering",
+        "name": "Workspace Engineering",
+        "description": "Inspect, modify, and validate code within the configured repository.",
+        "tags": ["code", "repository", "tests", "refactoring"]
+      }
+    ]
+  },
+  "server": {
+    "port": 3020,
+    "hostname": "0.0.0.0",
+    "advertiseHost": "localhost",
+    "advertiseProtocol": "http"
+  },
+  "codex": {
+    "workingDirectory": "${WORKSPACE_DIR}",
+    "model": "${CODEX_MODEL}",
+    "sandboxMode": "workspace-write",
+    "approvalPolicy": "never",
+    "networkAccessEnabled": false,
+    "webSearchMode": "disabled",
+    "skipGitRepoCheck": false,
+    "additionalDirectories": [],
+    "developerInstructions": "Operate only within the configured workspace. Make the smallest safe change. Run relevant tests after edits. Never reveal credentials, environment variables, or internal tool configuration."
+  },
+  "session": {
+    "reuseByContext": true,
+    "ttl": 3600000,
+    "cleanupInterval": 300000
+  },
+  "features": {
+    "streamArtifactChunks": false,
+    "emitReasoningSummaries": true,
+    "emitCommandEvents": true,
+    "emitFileChangeEvents": true
+  },
+  "events": {
+    "enabled": true,
+    "transport": "a2a"
+  },
+  "timeouts": {
+    "prompt": 600000
+  },
+  "logging": {
+    "level": "info"
+  }
+}

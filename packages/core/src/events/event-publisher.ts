@@ -36,6 +36,7 @@
  */
 
 import type {
+  Task,
   TaskStatusUpdateEvent,
   TaskArtifactUpdateEvent,
   TaskState,
@@ -43,6 +44,37 @@ import type {
 import type { ExecutionEventBus } from "@a2a-js/sdk/server";
 import { v4 as uuidv4 } from "uuid";
 import { TRACE_EXTENSION_URI } from "../server/agent-card.js";
+
+// ─── Task Registration ───────────────────────────────────────────────────────
+
+/**
+ * Register a task with the A2A ResultManager before any status events.
+ *
+ * Publishes a bare {@link Task} object with `state: "submitted"` so the SDK's
+ * task store can track the task from the moment execution begins. Call this
+ * once at the start of {@link AgentExecutor.execute} when no prior task record
+ * exists for the given `taskId`.
+ *
+ * @param bus       - The {@link ExecutionEventBus} for the current task execution.
+ * @param taskId    - The A2A task identifier.
+ * @param contextId - The A2A context identifier for the conversation.
+ */
+export function publishTask(
+  bus: ExecutionEventBus,
+  taskId: string,
+  contextId: string,
+): void {
+  const event: Task = {
+    kind: "task",
+    id: taskId,
+    contextId,
+    status: {
+      state: "submitted",
+      timestamp: new Date().toISOString(),
+    },
+  };
+  bus.publish(event as any);
+}
 
 // ─── Status Updates ─────────────────────────────────────────────────────────
 

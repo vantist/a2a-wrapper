@@ -41,7 +41,7 @@ export const WELL_KNOWN_PATHS = {
   } satisfies BackendPaths,
 
   codex: {
-    instructionsPath: ".codex/instructions.md",
+    instructionsPath: "AGENTS.md",
     skillsBaseDir: ".agents/skills",
   } satisfies BackendPaths,
 } as const;
