@@ -146,7 +146,9 @@ function substituteEnvTokensInCodex(config: Record<string, unknown>): void {
     codex.workingDirectory = substituteEnvTokensInString(codex.workingDirectory);
   }
   if (typeof codex.model === "string") {
-    codex.model = substituteEnvTokensInString(codex.model);
+    const resolved = substituteEnvTokensInString(codex.model);
+    // Clear the field if the token wasn't resolved (env var not set) or if empty.
+    codex.model = resolved.includes("${") ? undefined : resolved || undefined;
   }
   if (Array.isArray(codex.additionalDirectories)) {
     codex.additionalDirectories = (codex.additionalDirectories as string[]).map((d) =>
