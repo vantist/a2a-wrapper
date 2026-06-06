@@ -3,7 +3,7 @@
 "@a2a-wrapper/core": patch
 ---
 
-## a2a-codex: Initial release (0.1.0)
+## a2a-codex: Initial release (1.6.0)
 
 New package `a2a-codex` — an A2A protocol wrapper for the OpenAI Codex SDK.
 

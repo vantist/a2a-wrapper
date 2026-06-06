@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.6.1 — 2026-06-06
+
+### Added
+
+- **`publishTask`** — new exported helper. Registers a bare `Task` object with the A2A result manager before any status events are published. Previously duplicated in each wrapper; now shared from core so all wrappers can import it without a local copy.
+
 ## 1.6.0 — 2026-06-03
 
 ### Added
