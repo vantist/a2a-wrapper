@@ -26,20 +26,24 @@ OpenAI Codex is a production-grade software engineering agent. It handles reposi
 
 ## Quick Start
 
+**Option A — OpenAI API key:**
+
 ```bash
-# Install globally
 npm install -g a2a-codex
 
-# Run the bundled example agent
 export OPENAI_API_KEY=sk-...
 export WORKSPACE_DIR=/path/to/your/repo
 a2a-codex --config agents/example/config.json
 ```
 
-Or without installing:
+**Option B — ChatGPT subscription (no API key needed):**
+
+If you have a ChatGPT Plus or Pro subscription and have already run `codex login` locally, the Codex CLI reads credentials from `~/.codex/auth.json` automatically — no `OPENAI_API_KEY` required. Specify a model that your subscription supports:
 
 ```bash
-OPENAI_API_KEY=sk-... WORKSPACE_DIR=/path/to/repo npx a2a-codex --config agents/example/config.json
+export WORKSPACE_DIR=/path/to/your/repo
+export CODEX_MODEL=gpt-5.5
+a2a-codex --config agents/example/config.json
 ```
 
 The agent card is available at `http://localhost:3020/.well-known/agent-card.json`.
@@ -343,17 +347,36 @@ OS / Container boundary
 
 ## Docker
 
-```bash
-# Build
-docker build -t a2a-codex:latest .
+Build from the **monorepo root** (the image needs local `@a2a-wrapper/core` source):
 
-# Run with workspace mounted
+```bash
+docker build -f a2a-codex/Dockerfile -t a2a-codex:latest .
+```
+
+**Option A — OpenAI API key (recommended for CI / cloud):**
+
+```bash
 docker run -p 3020:3020 \
   -e OPENAI_API_KEY=sk-... \
   -e WORKSPACE_DIR=/workspace \
   -v /host/path/to/repo:/workspace \
-  a2a-codex:latest --config agents/example/config.json
+  a2a-codex:latest
 ```
+
+**Option B — ChatGPT subscription (mount local credentials):**
+
+```bash
+docker run -p 3020:3020 \
+  -e WORKSPACE_DIR=/workspace \
+  -e CODEX_MODEL=gpt-5.5 \
+  -v ~/.codex:/home/node/.codex \
+  -v /host/path/to/repo:/workspace \
+  a2a-codex:latest
+```
+
+The container runs as the `node` user (`HOME=/home/node`), so `~/.codex` maps to `/home/node/.codex`. Mount read-write (not `:ro`) because the Codex CLI writes session state alongside auth tokens.
+
+**Shell sandboxing in Docker:** Codex isolates every shell command it runs using Linux user namespaces via `bwrap` (Bubblewrap). Standard Docker containers disable unprivileged namespaces, so shell tool calls fail unless you add `--privileged` or `--security-opt=seccomp:unconfined`. For local development with a ChatGPT subscription, using `server.sh` directly (without Docker) avoids this constraint entirely.
 
 To inject a corporate proxy CA certificate, mount it at `/etc/ssl/certs/corporate-ca.crt` — the entrypoint script merges it with the system CA bundle automatically.
 
@@ -419,6 +442,9 @@ Set `RUN_CODEX_INTEGRATION_TESTS=true` to include the live integration test in `
 - **Buffered mode is the safe default.** `streamArtifactChunks: false` is the default. Some A2A clients (including the A2A Inspector) work best with complete, non-appending artifacts. Enable streaming only if your client handles `append: true` artifact updates.
 - **MCP config is baked at startup.** MCP servers are registered with the Codex SDK at construction time. Runtime MCP registration is not possible — all servers must be declared in `config.json` before the agent starts.
 - **One thread per A2A context.** Each A2A `contextId` maps to exactly one Codex thread. Turns within a context are serialized. Concurrent turns on the same context are queued, not parallelized.
+- **Docker: shell sandboxing requires elevated privileges.** Codex wraps every shell command in `bwrap` (Bubblewrap), which creates Linux user namespaces. Standard Docker containers block unprivileged namespace creation, so shell tool calls fail inside a container unless you run with `--privileged` or `--security-opt=seccomp:unconfined`. For local development, running with `server.sh` directly (no Docker) is recommended.
+- **ChatGPT subscription: OAuth tokens expire.** When using ChatGPT Plus/Pro authentication (via `codex login`), the tokens in `~/.codex/auth.json` are short-lived. When they expire the agent returns auth errors; re-run `codex login` on the host to refresh. For long-running or unattended deployments, `OPENAI_API_KEY` is more reliable.
+- **ChatGPT subscription: model name is required.** The default model in `~/.codex/config.toml` (set by the desktop app) may differ from models available through the API. Always set `CODEX_MODEL` explicitly (e.g. `gpt-5.5`) when using subscription auth — leaving it unset causes the agent to fall back to the local default, which may be unsupported via the API endpoint.
 
 ## License
 
