@@ -44,6 +44,7 @@ export { loadConfigFile, resolveConfig } from "./config/loader.js";
 // ─── Events ─────────────────────────────────────────────────────────────────
 
 export {
+  publishTask,
   publishStatus,
   publishFinalArtifact,
   publishStreamingChunk,

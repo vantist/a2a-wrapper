@@ -1,0 +1,77 @@
+{
+  "$comment": [
+    "Codex-backed lead engineering agent that delegates to specialist A2A sub-agents.",
+    "Required: OPENAI_API_KEY, WORKSPACE_DIR",
+    "Sub-agents must be running before starting this agent.",
+    "Update agentCardUrl values to match your deployed sub-agent addresses."
+  ],
+  "agentCard": {
+    "name": "Codex Lead Engineer",
+    "description": "A Codex-backed parent agent that coordinates repository analysis and delegates specialist tasks to remote A2A agents.",
+    "version": "1.0.0",
+    "protocolVersion": "0.3.0",
+    "streaming": true,
+    "defaultInputModes": ["text"],
+    "defaultOutputModes": ["text"],
+    "skills": [
+      {
+        "id": "lead-engineering",
+        "name": "Lead Engineering",
+        "description": "Coordinate repository analysis and delegate specialist tasks via A2A sub-agents.",
+        "tags": ["engineering", "delegation", "a2a", "multi-agent"]
+      }
+    ]
+  },
+  "server": {
+    "port": 3021,
+    "hostname": "0.0.0.0",
+    "advertiseHost": "localhost",
+    "advertiseProtocol": "http"
+  },
+  "codex": {
+    "workingDirectory": "${WORKSPACE_DIR}",
+    "sandboxMode": "workspace-write",
+    "approvalPolicy": "never",
+    "networkAccessEnabled": false,
+    "webSearchMode": "disabled",
+    "skipGitRepoCheck": false
+  },
+  "session": {
+    "reuseByContext": true,
+    "ttl": 3600000,
+    "cleanupInterval": 300000
+  },
+  "features": {
+    "streamArtifactChunks": false,
+    "emitReasoningSummaries": true,
+    "emitCommandEvents": true,
+    "emitFileChangeEvents": true
+  },
+  "events": {
+    "enabled": true,
+    "transport": "a2a"
+  },
+  "timeouts": {
+    "prompt": 600000
+  },
+  "logging": {
+    "level": "info"
+  },
+  "subAgents": {
+    "agents": [
+      {
+        "name": "security",
+        "agentCardUrl": "http://localhost:3010/.well-known/agent-card.json"
+      },
+      {
+        "name": "test-engineer",
+        "agentCardUrl": "http://localhost:3011/.well-known/agent-card.json"
+      }
+    ],
+    "options": {
+      "responseMode": "artifact",
+      "probeTimeoutMs": 5000,
+      "syncBudgetMs": 30000
+    }
+  }
+}

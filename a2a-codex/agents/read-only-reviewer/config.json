@@ -1,0 +1,50 @@
+{
+  "$comment": [
+    "Read-only repository analysis and code review agent.",
+    "Codex cannot modify files in this mode.",
+    "Required: OPENAI_API_KEY, WORKSPACE_DIR"
+  ],
+  "agentCard": {
+    "name": "Codex Code Reviewer",
+    "description": "Read-only repository analysis and code review agent backed by OpenAI Codex.",
+    "version": "1.0.0",
+    "protocolVersion": "0.3.0",
+    "streaming": true,
+    "defaultInputModes": ["text"],
+    "defaultOutputModes": ["text"],
+    "skills": [
+      {
+        "id": "code-review",
+        "name": "Code Review",
+        "description": "Analyse repository structure and review code without modifying any files.",
+        "tags": ["review", "analysis", "read-only", "security"]
+      }
+    ]
+  },
+  "server": {
+    "port": 3022,
+    "hostname": "0.0.0.0",
+    "advertiseHost": "localhost",
+    "advertiseProtocol": "http"
+  },
+  "codex": {
+    "workingDirectory": "${WORKSPACE_DIR}",
+    "sandboxMode": "read-only",
+    "approvalPolicy": "never",
+    "networkAccessEnabled": false,
+    "webSearchMode": "disabled",
+    "skipGitRepoCheck": false
+  },
+  "features": {
+    "streamArtifactChunks": false,
+    "emitReasoningSummaries": true,
+    "emitCommandEvents": true,
+    "emitFileChangeEvents": false
+  },
+  "timeouts": {
+    "prompt": 300000
+  },
+  "logging": {
+    "level": "info"
+  }
+}

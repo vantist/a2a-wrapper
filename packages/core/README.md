@@ -101,6 +101,7 @@ All public symbols are exported from the package root (`@a2a-wrapper/core`). Imp
 
 | Export | Description |
 |---|---|
+| `publishTask(bus, taskId, contextId)` | Registers a bare `Task` with the A2A result manager before any status events. Call once at the start of `execute()` when no prior task record exists. |
 | `publishStatus(bus, taskId, contextId, state, messageText?, final?)` | Publishes a `TaskStatusUpdateEvent`. |
 | `publishFinalArtifact(bus, taskId, contextId, text)` | Publishes a complete artifact (`lastChunk: true`). |
 | `publishStreamingChunk(bus, taskId, contextId, artifactId, chunkText)` | Publishes an appending artifact chunk. |
