@@ -3,7 +3,7 @@ import {
   LlmUsageAccumulator,
   type UsageCallRecord,
   type ContextWindowSnapshot,
-} from "@a2a-wrapper/core";
+} from "../index.js";
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
