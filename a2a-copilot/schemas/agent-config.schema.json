@@ -275,6 +275,9 @@
         "streamArtifactChunks": {
           "description": "Stream artifact chunks individually (A2A spec-correct) vs buffer and send single artifact (inspector-compatible). Default: false (buffered).",
           "type": "boolean"
+        },
+        "trackUsage": {
+          "type": "boolean"
         }
       },
       "type": "object"
