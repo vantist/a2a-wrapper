@@ -12,6 +12,7 @@ import { resolve, join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import Ajv2020, { type ValidateFunction } from "ajv";
 import addFormats from "ajv-formats";
+import { DEFAULTS } from "../config/defaults.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -67,6 +68,26 @@ describe("AgentConfig JSON schema", () => {
     expect(validate.errors).toBeDefined();
   });
 
+  it("accepts sessionMapFile as optional string in session config", () => {
+    const cfg = {
+      agentCard: { name: "Test", description: "x" },
+      session: { sessionMapFile: "/tmp/session-map.json" },
+    };
+    const ok = validate(cfg);
+    expect(validate.errors, JSON.stringify(validate.errors, null, 2)).toBeNull();
+    expect(ok).toBe(true);
+  });
+
+  it("accepts session config without sessionMapFile (undefined is fine)", () => {
+    const cfg = {
+      agentCard: { name: "Test", description: "x" },
+      session: { ttl: 3600000 },
+    };
+    const ok = validate(cfg);
+    expect(validate.errors, JSON.stringify(validate.errors, null, 2)).toBeNull();
+    expect(ok).toBe(true);
+  });
+
   it("rejects an unknown top-level field", () => {
     const cfg = {
       agentCard: { name: "Test", description: "x" },
@@ -74,5 +95,12 @@ describe("AgentConfig JSON schema", () => {
     };
     const ok = validate(cfg);
     expect(ok).toBe(false);
+  });
+});
+
+describe("DEFAULTS session config", () => {
+  it("does not include sessionMapFile in defaults", () => {
+    expect(DEFAULTS.session).not.toHaveProperty("sessionMapFile");
+    expect((DEFAULTS.session as Record<string, unknown>).sessionMapFile).toBeUndefined();
   });
 });

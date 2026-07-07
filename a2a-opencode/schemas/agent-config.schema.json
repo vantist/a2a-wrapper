@@ -92,7 +92,6 @@
           "type": "string"
         },
         "events": {
-          "$ref": "#/definitions/EventsConfig",
           "description": "Event transport configuration for sideband observability events."
         },
         "features": {
@@ -111,7 +110,6 @@
           "type": "object"
         },
         "memory": {
-          "$ref": "#/definitions/MemoryConfig",
           "description": "Optional memory configuration for persisting instructions and skills. When present, the materializer writes these to backend-specific paths in the workspace directory during executor initialization."
         },
         "opencode": {
@@ -127,7 +125,6 @@
           "description": "Session management"
         },
         "subAgents": {
-          "$ref": "#/definitions/SubAgentsConfig",
           "description": "Optional sub-agents to expose as MCP tools via the `a2a-mcp-skillmap` bridge. When present, the parent agent spawns skillmap as a stdio MCP server and registers it under the reserved `a2a-subagents` key in the resolved  {@link  mcp }  map. Sub-agents declared here become callable as ordinary MCP tools by the OpenCode runtime.\n\nWhen this field is absent or `agents` is empty, the parent skips every sub-agent code path with no side effects."
         },
         "timeouts": {
@@ -138,43 +135,6 @@
       "required": [
         "agentCard"
       ],
-      "type": "object"
-    },
-    "EventsConfig": {
-      "additionalProperties": false,
-      "description": "Event transport configuration for sideband observability events.\n\nControls how trace events (MCP tool calls, agent reasoning, lifecycle) are delivered. Only the two built-in transports are configurable via JSON config — for custom transports (Kafka, Redis, DB, etc.), use the programmatic API and pass a transport function to `createA2AServer()`.",
-      "properties": {
-        "enabled": {
-          "default": true,
-          "description": "Enable event emission.",
-          "type": "boolean"
-        },
-        "httpHeaders": {
-          "additionalProperties": {
-            "type": "string"
-          },
-          "description": "Custom HTTP headers sent with every event POST. Useful for authentication tokens: ```json { \"Authorization\": \"Bearer ${CORTEX_TOKEN}\" } ```",
-          "type": "object"
-        },
-        "httpTimeout": {
-          "default": "10_000",
-          "description": "HTTP request timeout in milliseconds for the `\"http\"` transport.",
-          "type": "number"
-        },
-        "httpUrl": {
-          "description": "HTTP endpoint URL for the `\"http\"` transport. Required when `transport` is `\"http\"`.",
-          "type": "string"
-        },
-        "transport": {
-          "default": "a2a",
-          "description": "Built-in transport type.\n\n- `\"a2a\"` — publish as sideband trace artifacts on the A2A   ExecutionEventBus (default, zero dependencies).\n- `\"http\"` — POST events as JSON to  {@link  httpUrl } .\n\nFor custom transports, leave this unset and provide a transport function via the programmatic `createA2AServer()` API.",
-          "enum": [
-            "a2a",
-            "http"
-          ],
-          "type": "string"
-        }
-      },
       "type": "object"
     },
     "FeatureFlags": {
@@ -324,24 +284,6 @@
       ],
       "description": "Union of local and remote MCP server configs."
     },
-    "MemoryConfig": {
-      "additionalProperties": false,
-      "description": "Optional memory configuration section in agent config.json.\n\nDeclares instructions and skills to materialize into the agent's workspace at startup. Both fields are optional — operators can declare instructions only, skills only, or both.\n\nPaths are resolved relative to the directory containing config.json (Config_Directory) unless they are absolute.",
-      "properties": {
-        "instructions": {
-          "description": "Path to a markdown instructions file. Resolved relative to Config_Directory when relative, used as-is when absolute.",
-          "type": "string"
-        },
-        "skills": {
-          "description": "Paths to skill directories, each containing a SKILL.md file. Resolved relative to Config_Directory when relative, used as-is when absolute.",
-          "items": {
-            "type": "string"
-          },
-          "type": "array"
-        }
-      },
-      "type": "object"
-    },
     "OpenCodeConfig": {
       "additionalProperties": false,
       "description": "How the wrapper connects to and interacts with OpenCode.",
@@ -424,6 +366,10 @@
           "description": "Reuse sessions by A2A contextId (default: true)",
           "type": "boolean"
         },
+        "sessionMapFile": {
+          "description": "Path to a JSON file for persisting the contextId→sessionId mapping across restarts. When set, the map is loaded on startup and written on every update. When absent, the mapping is in-memory only (default behavior).",
+          "type": "string"
+        },
         "titlePrefix": {
           "description": "Session title prefix (default: \"A2A Session\")",
           "type": "string"
@@ -466,134 +412,6 @@
         "name",
         "description"
       ],
-      "type": "object"
-    },
-    "SubAgentAuthConfig": {
-      "anyOf": [
-        {
-          "additionalProperties": false,
-          "properties": {
-            "mode": {
-              "const": "none",
-              "type": "string"
-            }
-          },
-          "required": [
-            "mode"
-          ],
-          "type": "object"
-        },
-        {
-          "additionalProperties": false,
-          "properties": {
-            "mode": {
-              "const": "bearer",
-              "type": "string"
-            },
-            "token": {
-              "type": "string"
-            }
-          },
-          "required": [
-            "mode",
-            "token"
-          ],
-          "type": "object"
-        },
-        {
-          "additionalProperties": false,
-          "properties": {
-            "headerName": {
-              "type": "string"
-            },
-            "mode": {
-              "const": "api_key",
-              "type": "string"
-            },
-            "token": {
-              "type": "string"
-            }
-          },
-          "required": [
-            "mode",
-            "token"
-          ],
-          "type": "object"
-        }
-      ],
-      "description": "Outbound credentials the bridge presents when calling a remote A2A sub-agent. Forwarded verbatim into the bridge config consumed by `a2a-mcp-skillmap`.\n\n`mode: \"none\"` is equivalent to omitting the `auth` field entirely and produces no auth block in the generated bridge config.\n\nFor `mode: \"api_key\"`, the optional `headerName` defaults to whatever `a2a-mcp-skillmap` uses (typically `X-API-Key`).\n\nTokens may reference environment variables via `${VAR_NAME}` syntax; the substitution happens during validation and missing variables cause the auth block to be omitted with a warning."
-    },
-    "SubAgentConfig": {
-      "additionalProperties": false,
-      "description": "One remote A2A agent the parent will expose as MCP tools via the `a2a-mcp-skillmap` bridge.",
-      "properties": {
-        "agentCardUrl": {
-          "description": "URL of the sub-agent's A2A agent card. Required.\n\nTypically `https://<host>/.well-known/agent-card.json`, but any URL the bridge can probe is valid. Must use the `http:` or `https:` protocol.",
-          "type": "string"
-        },
-        "auth": {
-          "$ref": "#/definitions/SubAgentAuthConfig",
-          "description": "Outbound credentials the bridge presents when calling this sub-agent. Forwarded verbatim into the bridge config.\n\nOmitting this field is equivalent to `{ mode: \"none\" }`."
-        },
-        "endpointUrlOverride": {
-          "description": "Optional override for the URL the bridge probes. Useful when the agent card declares an endpoint that differs from where the agent is actually reachable (NAT, port-forward, internal vs external).\n\nWhen set, this URL is passed to the bridge instead of  {@link  agentCardUrl } . The bridge still resolves a card from this URL — point it at a card URL or a base URL it can probe under `/.well-known/`. Must use the `http:` or `https:` protocol.",
-          "type": "string"
-        },
-        "name": {
-          "description": "Stable identifier for this sub-agent. Becomes the prefix on generated MCP tool names (`{name}__{skillId}`). Required.\n\nAllowed characters: ASCII letters, digits, hyphens, and underscores (must match `/^[A-Za-z0-9_-]+$/`). Must be unique across all entries in the `subAgents.agents` array.",
-          "type": "string"
-        }
-      },
-      "required": [
-        "name",
-        "agentCardUrl"
-      ],
-      "type": "object"
-    },
-    "SubAgentsConfig": {
-      "additionalProperties": false,
-      "description": "Top-level shape of the `subAgents` field merged into the agent's `BaseAgentConfig`.\n\nWhen this field is absent or `agents` is an empty array, the parent skips every sub-agent code path with no side effects (no bridge config written, no MCP entry injected).",
-      "properties": {
-        "agents": {
-          "description": "The list of remote A2A agents to expose as MCP tools.",
-          "items": {
-            "$ref": "#/definitions/SubAgentConfig"
-          },
-          "type": "array"
-        },
-        "options": {
-          "$ref": "#/definitions/SubAgentsOptions",
-          "description": "Optional bridge-wide knobs."
-        }
-      },
-      "required": [
-        "agents"
-      ],
-      "type": "object"
-    },
-    "SubAgentsOptions": {
-      "additionalProperties": false,
-      "description": "Optional knobs that apply to the bridge process as a whole, not to any single sub-agent.",
-      "properties": {
-        "probeTimeoutMs": {
-          "description": "Probe timeout in milliseconds for the startup reachability check the parent performs against each sub-agent. Defaults to `5000` when unset.",
-          "type": "number"
-        },
-        "responseMode": {
-          "description": "Skillmap response shaping mode passed through to the bridge config. Defaults to `\"artifact\"` when unset.",
-          "enum": [
-            "structured",
-            "compact",
-            "artifact",
-            "raw"
-          ],
-          "type": "string"
-        },
-        "syncBudgetMs": {
-          "description": "Sync budget in milliseconds passed to `a2a-mcp-skillmap` via the bridge config. Controls how long the bridge waits for an A2A agent to respond before switching to async task-handle mode.\n\nWhen the budget expires the bridge immediately returns a `taskId` to the MCP client; the A2A dispatch continues in the background. The LLM can then poll via the built-in `task_result` / `task_status` tools which actively re-query the remote agent before responding.\n\n- Set lower (e.g. `10000`) for interactive use where you want fast   task-handle responses.\n- Set to `0` to wait indefinitely (no async fallback).\n- Defaults to `30000` (30 s) when unset — skillmap's own default.",
-          "type": "number"
-        }
-      },
       "type": "object"
     },
     "TimeoutConfig": {
