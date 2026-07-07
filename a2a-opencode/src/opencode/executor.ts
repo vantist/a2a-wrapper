@@ -384,7 +384,7 @@ export class OpenCodeExecutor implements AgentExecutor {
       publishStatus(bus, taskId, contextId, "working", "Processing request...");
 
       // 3. Session
-      const sessionId = await this.sessionManager!.getOrCreate(contextId);
+      const { sessionId, created } = await this.sessionManager!.getOrCreate(contextId);
       this.sessionManager!.trackTask(taskId, sessionId, contextId);
 
       // 4. Build prompt (prepend system prompt on first message in session)

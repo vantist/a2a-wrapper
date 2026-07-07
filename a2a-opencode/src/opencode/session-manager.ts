@@ -125,16 +125,17 @@ export class SessionManager {
 
   /**
    * Get or create a session for the given A2A contextId.
-   * Reuses sessions when configured.
+   * Returns `{ sessionId, created }` where `created` is `true` when a new
+   * opencode session was started, and `false` when an existing one was reused.
    */
-  async getOrCreate(contextId: string): Promise<string> {
+  async getOrCreate(contextId: string): Promise<{ sessionId: string; created: boolean }> {
     if (this.sessionCfg.reuseByContext) {
       const entry = this.contextMap.get(contextId);
       if (entry) {
         entry.lastUsed = Date.now();
         try {
           await this.client.sessionGet(entry.sessionId, this.directory || undefined);
-          return entry.sessionId;
+          return { sessionId: entry.sessionId, created: false };
         } catch {
           this.contextMap.delete(contextId);
           this.persistMap();
@@ -157,7 +158,7 @@ export class SessionManager {
     }
 
     log.info("Session ready", { sessionId: session.id, contextId });
-    return session.id;
+    return { sessionId: session.id, created: true };
   }
 
   /**

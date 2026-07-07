@@ -279,6 +279,59 @@ describe("SessionManager — persistence", () => {
   });
 });
 
+describe("SessionManager — getOrCreate created flag", () => {
+  let readSpy: ReturnType<typeof vi.mocked<typeof fsModule.readFileSync>>;
+
+  beforeEach(() => {
+    vi.resetAllMocks();
+    readSpy = vi.mocked(fsModule.readFileSync);
+    const enoent = Object.assign(new Error("ENOENT"), { code: "ENOENT" });
+    readSpy.mockImplementation(() => { throw enoent; });
+  });
+
+  function makeManager(opts?: { sessionGetShouldThrow?: boolean }) {
+    const client = {
+      sessionCreate: vi.fn().mockResolvedValue({ id: "ses_new" }),
+      sessionGet: opts?.sessionGetShouldThrow
+        ? vi.fn().mockRejectedValue(new Error("not found"))
+        : vi.fn().mockResolvedValue({}),
+    };
+    const cfg = {
+      titlePrefix: "A2A Session",
+      reuseByContext: true,
+      ttl: 3_600_000,
+      cleanupInterval: 300_000,
+      sessionMapFile: undefined,
+    };
+    return { manager: new SessionManager(client as any, cfg as any, DEFAULT_FEATURES, ""), client };
+  }
+
+  it("getOrCreate created=true on new session", async () => {
+    const { manager } = makeManager();
+    const result = await manager.getOrCreate("ctx-new");
+    expect(result).toEqual({ sessionId: "ses_new", created: true });
+  });
+
+  it("getOrCreate created=false on reuse", async () => {
+    const { manager } = makeManager();
+    // First call creates
+    await manager.getOrCreate("ctx-reuse");
+    // Second call reuses
+    const result = await manager.getOrCreate("ctx-reuse");
+    expect(result.created).toBe(false);
+    expect(result.sessionId).toBeDefined();
+  });
+
+  it("getOrCreate created=true when stale entry cleared", async () => {
+    const { manager } = makeManager({ sessionGetShouldThrow: true });
+    // Pre-populate with stale entry
+    (manager as any).contextMap.set("ctx-stale", { sessionId: "ses_old", lastUsed: Date.now() });
+    const result = await manager.getOrCreate("ctx-stale");
+    // stale → cleared → new session created
+    expect(result.created).toBe(true);
+  });
+});
+
 describe("SessionManager — sessionExists", () => {
   let readSpy: ReturnType<typeof vi.mocked<typeof fsModule.readFileSync>>;
 
