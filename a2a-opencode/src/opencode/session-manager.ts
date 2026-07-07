@@ -71,9 +71,24 @@ export class SessionManager {
     if (!path) return;
     try {
       const raw = fs.readFileSync(path, "utf-8");
-      const parsed = JSON.parse(raw) as Record<string, SessionEntry>;
-      for (const [ctx, entry] of Object.entries(parsed)) {
-        this.contextMap.set(ctx, entry);
+      const parsed = JSON.parse(raw) as unknown;
+      if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+        log.error("Session map file is not a JSON object — starting empty");
+        return;
+      }
+      for (const [ctx, entry] of Object.entries(parsed as Record<string, unknown>)) {
+        // Validate each entry shape before inserting to prevent malformed data
+        // from reaching sessionGet (e.g. null entries or non-string sessionIds).
+        if (
+          entry !== null &&
+          typeof entry === "object" &&
+          typeof (entry as Record<string, unknown>).sessionId === "string" &&
+          typeof (entry as Record<string, unknown>).lastUsed === "number"
+        ) {
+          this.contextMap.set(ctx, entry as SessionEntry);
+        } else {
+          log.error("Skipping malformed entry in session map", { ctx });
+        }
       }
     } catch (e) {
       if ((e as NodeJS.ErrnoException).code === "ENOENT") return;

@@ -380,10 +380,13 @@ export class OpenCodeExecutor implements AgentExecutor {
       transport,
     });
 
+    // Track whether we have registered the task with the SDK ResultManager.
+    // publishTask MUST precede any status-update event, including error ones.
+    let taskRegistered = !!task; // already registered when resuming an existing task
+
     try {
-      // 1. Session — resolve first so we know whether this is a new session.
-      // publishTask must still be first event to the ResultManager; it is
-      // published immediately below before any status-update events.
+      // 1. Session — resolve first so we know whether this is a new session,
+      // enabling the Task event to carry metadata.sessionCreated when applicable.
       const { sessionId, created } = await this.sessionManager!.getOrCreate(contextId);
       this.sessionManager!.trackTask(taskId, sessionId, contextId);
 
@@ -393,6 +396,7 @@ export class OpenCodeExecutor implements AgentExecutor {
       if (!task) {
         publishTask(bus, taskId, contextId, created ? { sessionCreated: true } : undefined);
         publishStatus(bus, taskId, contextId, "submitted");
+        taskRegistered = true;
       }
 
       // 3. Working
@@ -622,6 +626,13 @@ export class OpenCodeExecutor implements AgentExecutor {
         ? `Cannot reach OpenCode server at ${baseUrl}. Is OpenCode running? Start it with: opencode serve`
         : `Error: ${msg}`;
       log.error("Execution failed", { taskId, error: msg });
+      // Ensure the task is registered before publishing any status-update events.
+      // If getOrCreate threw before publishTask ran, the ResultManager doesn't
+      // know this task yet and will silently drop subsequent events.
+      if (!taskRegistered) {
+        publishTask(bus, taskId, contextId);
+        taskRegistered = true;
+      }
       publishStatus(bus, taskId, contextId, "failed", userMsg, true);
       bus.finished();
     } finally {
