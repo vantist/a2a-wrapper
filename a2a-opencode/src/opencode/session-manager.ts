@@ -5,6 +5,7 @@
  * Extracted from executor to keep each module focused.
  */
 
+import fs from "node:fs";
 import type { OpenCodeClientWrapper } from "./client.js";
 import type { Session, PermissionRuleset } from "./types.js";
 import type { SessionConfig, FeatureFlags } from "../config/types.js";
@@ -45,6 +46,7 @@ export class SessionManager {
   private taskMap = new Map<string, string>(); // taskId → sessionId
   private taskContexts = new Map<string, string>(); // taskId → contextId
   private cleanupTimer: ReturnType<typeof setInterval> | null = null;
+  private persistTimer: ReturnType<typeof setTimeout> | null = null;
 
   constructor(
     client: OpenCodeClientWrapper,
@@ -56,12 +58,72 @@ export class SessionManager {
     this.sessionCfg = sessionCfg;
     this.autoApprove = features.autoApprovePermissions;
     this.directory = directory;
+    this.loadMap();
+  }
+
+  /**
+   * Loads the persisted contextId→sessionId map from `sessionMapFile`.
+   * If the file does not exist (ENOENT), starts with an empty map.
+   * If the file exists but contains invalid JSON, logs an error and starts empty.
+   * If `sessionMapFile` is not configured, does nothing.
+   */
+  private loadMap(): void {
+    const path = this.sessionCfg.sessionMapFile;
+    if (!path) return;
+    try {
+      const raw = fs.readFileSync(path, "utf-8");
+      const parsed = JSON.parse(raw) as unknown;
+      if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+        log.error("Session map file is not a JSON object — starting empty");
+        return;
+      }
+      for (const [ctx, entry] of Object.entries(parsed as Record<string, unknown>)) {
+        // Validate each entry shape before inserting to prevent malformed data
+        // from reaching sessionGet (e.g. null entries or non-string sessionIds).
+        if (
+          entry !== null &&
+          typeof entry === "object" &&
+          typeof (entry as Record<string, unknown>).sessionId === "string" &&
+          typeof (entry as Record<string, unknown>).lastUsed === "number"
+        ) {
+          this.contextMap.set(ctx, entry as SessionEntry);
+        } else {
+          log.error("Skipping malformed entry in session map", { ctx });
+        }
+      }
+    } catch (e) {
+      if ((e as NodeJS.ErrnoException).code === "ENOENT") return;
+      log.error("Failed to load session map — starting empty", { error: e });
+    }
+  }
+
+  /**
+   * Schedules a debounced async write of the current `contextMap` to `sessionMapFile`.
+   * Calls within 200 ms are coalesced into a single write, avoiding event-loop
+   * blocking on burst updates (e.g., rapid session creation or cleanup sweeps).
+   * If `sessionMapFile` is not configured, does nothing.
+   * Write failures are logged but never thrown.
+   */
+  private persistMap(): void {
+    const path = this.sessionCfg.sessionMapFile;
+    if (!path) return;
+    if (this.persistTimer) clearTimeout(this.persistTimer);
+    this.persistTimer = setTimeout(() => {
+      this.persistTimer = null;
+      fs.promises
+        .writeFile(path, JSON.stringify(Object.fromEntries(this.contextMap)), "utf-8")
+        .catch((e) => log.error("Failed to persist session map", { error: e }));
+    }, 200);
+    // Allow Node.js to exit without waiting for a pending flush.
+    this.persistTimer.unref?.();
   }
 
   /** Start periodic session cleanup. */
   startCleanup(): void {
     if (this.cleanupTimer) return;
     this.cleanupTimer = setInterval(() => {
+      // When ttl <= 0 (disabled), skip cleanup entirely to avoid clearing all entries.
+      if (this.sessionCfg.ttl <= 0) return;
       const now = Date.now();
       let cleaned = 0;
       for (const [ctx, entry] of this.contextMap) {
@@ -70,7 +132,10 @@ export class SessionManager {
           cleaned++;
         }
       }
-      if (cleaned > 0) log.info("Cleaned expired sessions", { count: cleaned });
+      if (cleaned > 0) {
+        log.info("Cleaned expired sessions", { count: cleaned });
+        this.persistMap();
+      }
     }, this.sessionCfg.cleanupInterval);
     if (this.cleanupTimer.unref) this.cleanupTimer.unref();
   }
@@ -82,18 +147,20 @@ export class SessionManager {
 
   /**
    * Get or create a session for the given A2A contextId.
-   * Reuses sessions when configured.
+   * Returns `{ sessionId, created }` where `created` is `true` when a new
+   * opencode session was started, and `false` when an existing one was reused.
    */
-  async getOrCreate(contextId: string): Promise<string> {
+  async getOrCreate(contextId: string): Promise<{ sessionId: string; created: boolean }> {
     if (this.sessionCfg.reuseByContext) {
       const entry = this.contextMap.get(contextId);
       if (entry) {
         entry.lastUsed = Date.now();
         try {
           await this.client.sessionGet(entry.sessionId, this.directory || undefined);
-          return entry.sessionId;
+          return { sessionId: entry.sessionId, created: false };
         } catch {
           this.contextMap.delete(contextId);
+          this.persistMap();
         }
       }
     }
@@ -109,10 +176,35 @@ export class SessionManager {
 
     if (this.sessionCfg.reuseByContext) {
       this.contextMap.set(contextId, { sessionId: session.id, lastUsed: Date.now() });
+      this.persistMap();
     }
 
     log.info("Session ready", { sessionId: session.id, contextId });
-    return session.id;
+    return { sessionId: session.id, created: true };
+  }
+
+  /**
+   * Check whether a resumable session exists for `contextId` without creating one.
+   * Returns `true` if a mapping exists and `sessionGet` succeeds (session is alive).
+   * A successful liveness check refreshes `lastUsed` to extend the TTL window.
+   * Clears the stale entry (and persists) when `sessionGet` fails.
+   * Returns `false` immediately when `reuseByContext` is disabled.
+   */
+  async sessionExists(contextId: string): Promise<boolean> {
+    if (!this.sessionCfg.reuseByContext) return false;
+
+    const entry = this.contextMap.get(contextId);
+    if (!entry) return false;
+
+    try {
+      await this.client.sessionGet(entry.sessionId, this.directory || undefined);
+      entry.lastUsed = Date.now();
+      return true;
+    } catch {
+      this.contextMap.delete(contextId);
+      this.persistMap();
+      return false;
+    }
   }
 
   /** Track a task → session + context mapping (for cancel support). */
@@ -140,6 +232,20 @@ export class SessionManager {
   /** Cleanup all state. */
   shutdown(): void {
     this.stopCleanup();
+    // Cancel any pending debounced write and flush synchronously before clearing
+    // state, so the final snapshot is not lost when the process shuts down.
+    if (this.persistTimer) {
+      clearTimeout(this.persistTimer);
+      this.persistTimer = null;
+      const path = this.sessionCfg.sessionMapFile;
+      if (path) {
+        try {
+          fs.writeFileSync(path, JSON.stringify(Object.fromEntries(this.contextMap)), "utf-8");
+        } catch (e) {
+          log.error("Failed to persist session map on shutdown", { error: e });
+        }
+      }
+    }
     this.contextMap.clear();
     this.taskMap.clear();
     this.taskContexts.clear();

@@ -209,6 +209,15 @@ export class OpenCodeExecutor implements AgentExecutor {
     log.info("Executor initialized", { baseUrl: oc.baseUrl, directory: oc.projectDirectory || "(default)" });
   }
 
+  /**
+   * Delegate to SessionManager.sessionExists — used by the /session-status route.
+   * Returns false if SessionManager is not yet initialized.
+   */
+  async sessionExists(contextId: string): Promise<boolean> {
+    if (!this.sessionManager) return false;
+    return this.sessionManager.sessionExists(contextId);
+  }
+
   async shutdown(): Promise<void> {
     this.sessionManager?.shutdown();
     if (this.client) { this.client.cleanup(); this.client = null; }
@@ -371,21 +380,27 @@ export class OpenCodeExecutor implements AgentExecutor {
       transport,
     });
 
+    // Track whether we have registered the task with the SDK ResultManager.
+    // publishTask MUST precede any status-update event, including error ones.
+    let taskRegistered = !!task; // already registered when resuming an existing task
+
     try {
-      // 1. Register task with the SDK's ResultManager, then emit submitted status.
+      // 1. Session — resolve first so we know whether this is a new session,
+      // enabling the Task event to carry metadata.sessionCreated when applicable.
+      const { sessionId, created } = await this.sessionManager!.getOrCreate(contextId);
+      this.sessionManager!.trackTask(taskId, sessionId, contextId);
+
+      // 2. Register task with the SDK's ResultManager, then emit submitted status.
       // The ResultManager requires a task event (kind: "task") before it will
       // accept status-update or artifact-update events for new tasks.
       if (!task) {
-        publishTask(bus, taskId, contextId);
+        publishTask(bus, taskId, contextId, created ? { sessionCreated: true } : undefined);
         publishStatus(bus, taskId, contextId, "submitted");
+        taskRegistered = true;
       }
 
-      // 2. Working
+      // 3. Working
       publishStatus(bus, taskId, contextId, "working", "Processing request...");
-
-      // 3. Session
-      const sessionId = await this.sessionManager!.getOrCreate(contextId);
-      this.sessionManager!.trackTask(taskId, sessionId, contextId);
 
       // 4. Build prompt (prepend system prompt on first message in session)
       let promptText = this.extractText(userMessage);
@@ -611,6 +626,13 @@ export class OpenCodeExecutor implements AgentExecutor {
         ? `Cannot reach OpenCode server at ${baseUrl}. Is OpenCode running? Start it with: opencode serve`
         : `Error: ${msg}`;
       log.error("Execution failed", { taskId, error: msg });
+      // Ensure the task is registered before publishing any status-update events.
+      // If getOrCreate threw before publishTask ran, the ResultManager doesn't
+      // know this task yet and will silently drop subsequent events.
+      if (!taskRegistered) {
+        publishTask(bus, taskId, contextId);
+        taskRegistered = true;
+      }
       publishStatus(bus, taskId, contextId, "failed", userMsg, true);
       bus.finished();
     } finally {

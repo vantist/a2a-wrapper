@@ -126,6 +126,12 @@ export interface SessionConfig {
   ttl?: number;
   /** Session cleanup interval in ms (default: 300_000 = 5 min) */
   cleanupInterval?: number;
+  /**
+   * Path to a JSON file for persisting the contextId→sessionId mapping across restarts.
+   * When set, the map is loaded on startup and written on every update.
+   * When absent, the mapping is in-memory only (default behavior).
+   */
+  sessionMapFile?: string;
 }
 
 // ─── Feature Flags ──────────────────────────────────────────────────────────
